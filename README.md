@@ -1,5 +1,7 @@
 # SkuTrail — Multichannel Inventory, Orders & Procurement Reporting
 
+![tests](https://github.com/LiweiWang-Serena/Merchy-AI/actions/workflows/tests.yml/badge.svg)
+
 A demo project simulating a real problem for sellers who list the same
 products on **Amazon and eBay**: the two platforms track stock
 independently, so quantities drift apart, and someone still has to turn
