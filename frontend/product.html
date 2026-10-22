@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SkuTrail Demo Store — Product</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/store.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="/">SkuTrail Demo Store</a>
+  <nav>
+    <a href="/">Shop</a>
+    <a class="cart-link" href="/cart">Cart <span id="cart-badge">0</span></a>
+  </nav>
+</header>
+
+<main id="main-content">
+  <p style="color:var(--ink-dim); font-size:13px;">Loading…</p>
+</main>
+
+<script src="/static/cart.js"></script>
+<script>
+const API = "/api";
+const sku = new URLSearchParams(window.location.search).get('sku');
+
+async function loadProduct() {
+  const main = document.getElementById('main-content');
+  if (!sku) { main.innerHTML = "<p>No product specified.</p>"; return; }
+
+  const res = await fetch(API + "/products/" + encodeURIComponent(sku));
+  if (!res.ok) { main.innerHTML = "<p>Product not found.</p>"; return; }
+  const p = await res.json();
+
+  const thumbs = p.images.slice(1).map(img => `<div>${productImage(img, p.title)}</div>`).join('');
+
+  main.innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-images">
+        <div class="main-image">${productImage(p.images[0], p.title)}</div>
+        ${p.images.length > 1 ? `<div class="thumb-row">${thumbs}</div>` : ''}
+      </div>
+      <div>
+        <h1 class="detail-title">${escapeHtml(p.title)}</h1>
+        <div class="detail-brand">${p.brand ? escapeHtml(p.brand) + ', ' : ''}SKU ${escapeHtml(p.sku)}</div>
+        <div class="detail-price">$${p.price.toFixed(2)}</div>
+        <div class="detail-stock">${p.inventory_qty > 0 ? p.inventory_qty + ' available' : 'Currently sold out'}</div>
+        <div class="detail-description">${p.description_html}</div>
+        ${p.inventory_qty > 0 ? `
+          <div class="qty-row">
+            <label>Quantity</label>
+            <input type="number" id="qty" value="1" min="1" max="${p.inventory_qty}">
+          </div>
+          <button class="primary" onclick="addAndGo()">Add to cart</button>
+          <button class="secondary" onclick="location.href='/'">Continue browsing</button>
+        ` : `<button class="secondary" disabled>Sold out</button>`}
+      </div>
+    </div>
+  `;
+
+  window._product = p;
+}
+
+function addAndGo() {
+  const qty = parseInt(document.getElementById('qty').value, 10) || 1;
+  const p = window._product;
+  addToCart(p.sku, p.title, p.price, p.images[0], qty);
+  location.href = '/cart';
+}
+
+loadProduct();
+</script>
+
+<script src="/static/support-widget.js"></script>
+</body>
+</html>

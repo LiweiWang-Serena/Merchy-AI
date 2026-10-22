@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SkuTrail Demo Store — Checkout</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/store.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="/">SkuTrail Demo Store</a>
+  <nav>
+    <a href="/">Shop</a>
+    <a class="cart-link" href="/cart">Cart <span id="cart-badge">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <div id="checkout-content"></div>
+</main>
+
+<script src="/static/cart.js"></script>
+<script>
+const API = "/api";
+
+function renderCheckoutForm() {
+  const cart = getCart();
+  const content = document.getElementById('checkout-content');
+
+  if (!cart.length) {
+    content.innerHTML = `<div class="empty-state">
+      <p>Your cart is empty.</p>
+      <button class="primary" onclick="location.href='/'">Browse lots</button>
+    </div>`;
+    return;
+  }
+
+  const summaryLines = cart.map(item => `
+    <div class="order-summary-line">
+      <span>${item.title} × ${item.quantity}</span>
+      <span>$${(item.price * item.quantity).toFixed(2)}</span>
+    </div>
+  `).join('');
+
+  content.innerHTML = `
+    <h1 class="page-title">Checkout</h1>
+    <div class="checkout-grid">
+      <div class="checkout-panel">
+        <h2>Payment details</h2>
+
+        <div class="test-card-hint">
+          <strong>Test mode:</strong> no real charge will be made.<br>
+          Success: <code>4242 4242 4242 4242</code> &nbsp;
+          Declined: <code>4000 0000 0000 0002</code> &nbsp;
+          Any future expiry / any 3-digit CVC.
+        </div>
+
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label>Card number</label>
+          <input type="text" id="card-number" placeholder="4242 4242 4242 4242" maxlength="19">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Expiry</label>
+            <input type="text" id="exp" placeholder="MM/YY" maxlength="5">
+          </div>
+          <div class="field">
+            <label>CVC</label>
+            <input type="text" id="cvc" placeholder="123" maxlength="3">
+          </div>
+        </div>
+
+        <button class="primary" id="pay-btn" onclick="submitPayment()" style="width:100%; margin-top:10px;">
+          Pay $${cartTotal().toFixed(2)}
+        </button>
+        <div id="payment-message"></div>
+      </div>
+
+      <div class="checkout-panel">
+        <h2>Order summary</h2>
+        ${summaryLines}
+        <div class="order-summary-total">
+          <span>Total</span>
+          <span>$${cartTotal().toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('card-number').addEventListener('input', (e) => {
+    let v = e.target.value.replace(/\D/g, '').slice(0, 16);
+    e.target.value = v.replace(/(\d{4})(?=\d)/g, '$1 ');
+  });
+  document.getElementById('exp').addEventListener('input', (e) => {
+    let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+    if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
+    e.target.value = v;
+  });
+}
+
+async function submitPayment() {
+  const email = document.getElementById('email').value.trim();
+  const cardNumber = document.getElementById('card-number').value.replace(/\s/g, '');
+  const exp = document.getElementById('exp').value.trim();
+  const cvc = document.getElementById('cvc').value.trim();
+  const msg = document.getElementById('payment-message');
+  const btn = document.getElementById('pay-btn');
+
+  msg.className = '';
+  msg.textContent = '';
+
+  if (!email || !cardNumber || !exp || !cvc) {
+    msg.className = 'error';
+    msg.textContent = 'Please fill in all fields.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const items = getCart().map(i => ({ sku: i.sku, quantity: i.quantity }));
+    const sessionRes = await fetch(API + "/checkout/create-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, items })
+    });
+    const session = await sessionRes.json();
+    if (!sessionRes.ok) throw new Error(session.error || "Could not start checkout");
+
+    const confirmRes = await fetch(API + "/checkout/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: session.session_id, card_number: cardNumber, exp, cvc })
+    });
+    const result = await confirmRes.json();
+
+    if (result.status === "success") {
+      localStorage.removeItem(CART_KEY);
+      renderConfirmation(result);
+    } else {
+      msg.className = 'error';
+      msg.textContent = result.message || "Payment failed.";
+      btn.disabled = false;
+      btn.textContent = `Pay $${cartTotal().toFixed(2)}`;
+    }
+  } catch (e) {
+    msg.className = 'error';
+    msg.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = `Pay $${cartTotal().toFixed(2)}`;
+  }
+}
+
+function renderConfirmation(result) {
+  document.getElementById('checkout-content').innerHTML = `
+    <div class="confirmation">
+      <div class="check">✓</div>
+      <h1 class="page-title">Order confirmed</h1>
+      <p class="page-subtitle">Order #${result.order_id}. $${result.total.toFixed(2)} was charged to the card ending in ${result.card_last4}.</p>
+      <button class="primary" onclick="location.href='/'">Continue shopping</button>
+    </div>
+  `;
+  updateCartBadge();
+}
+
+renderCheckoutForm();
+</script>
+
+<script src="/static/support-widget.js"></script>
+</body>
+</html>

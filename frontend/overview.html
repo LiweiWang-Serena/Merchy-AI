@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Overview — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p>The last 30 days across your store, Amazon and eBay.</p>
+  </div>
+  <div class="head-actions">
+    <a class="store-link" href="/admin/reports">Full reports</a>
+  </div>
+</header>
+
+<main>
+  <div class="msg" id="msg"></div>
+  <div class="strip" id="summary" aria-live="polite"></div>
+
+  <section class="cols">
+    <div>
+      <h2>Top sellers</h2>
+      <table class="data">
+        <thead><tr><th>#</th><th>Item</th><th class="num">Sold</th><th class="num">Revenue</th><th class="num">Net profit</th></tr></thead>
+        <tbody id="top"></tbody>
+      </table>
+    </div>
+    <div>
+      <h2>Needs attention</h2>
+      <table class="data">
+        <thead><tr><th>Item</th><th>Status</th><th>Why</th></tr></thead>
+        <tbody id="attention"></tbody>
+      </table>
+      <p class="hint" id="attention-more"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Recent store orders</h2>
+    <table class="data">
+      <thead><tr><th>Order</th><th>Placed</th><th class="num">Items</th><th class="num">Total</th><th>Status</th></tr></thead>
+      <tbody id="orders"></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="/static/ops.js"></script>
+<script>
+function itemLink(p) {
+  return `<a href="/admin/item?sku=${encodeURIComponent(p.sku)}" style="text-decoration:none">
+    <div class="item-cell">${tile(p.sku, p.image)}<div><div class="name">${esc(p.title)}</div>
+    <div class="code">${esc(p.sku)}</div></div></div></a>`;
+}
+
+const days = n => `${num(n)} ${Math.round(n) === 1 ? "day" : "days"}`;
+
+function reason(a) {
+  const parts = [];
+  if (a.status === "out_of_stock") parts.push("Nothing left to sell");
+  else if (a.status === "low") parts.push(`About ${days(a.days_left)} of stock left`);
+  else if (a.status === "overstock") parts.push(`${days(a.days_left)} of stock on hand`);
+  if (a.oversell.length) {
+    const names = a.oversell.map(c => CHANNEL_NAMES[c] || c);
+    parts.push(`${names.join(" and ")} ${names.length > 1 ? "list" : "lists"} more than the ${a.on_hand} on hand`);
+  }
+  return parts.join(". ");
+}
+
+function render(d) {
+  const s = d.summary;
+  document.getElementById("summary").innerHTML = `
+    <div><div class="fig">${money(s.revenue)}</div><div class="cap">Revenue</div></div>
+    <div><div class="fig${s.net_profit < 0 ? " minus" : ""}">${money(s.net_profit)}</div>
+         <div class="cap">Net profit after fees (${pct(s.net_margin_pct)})</div></div>
+    <div><div class="fig">${num(s.units_sold)}</div><div class="cap">Units sold</div></div>
+    <div><div class="fig">${money(s.stock_value)}</div><div class="cap">Stock value at cost</div></div>
+    <div><div class="fig${d.attention_total ? " minus" : ""}">${num(d.attention_total)}</div>
+         <div class="cap">Items needing attention</div></div>`;
+
+  document.getElementById("top").innerHTML = d.top_sellers.length
+    ? d.top_sellers.map((p, i) => `<tr>
+        <td class="muted">${i + 1}</td><td>${itemLink(p)}</td>
+        <td class="num">${num(p.units_sold)}</td><td class="num">${money(p.revenue)}</td>
+        <td class="num${p.net_profit < 0 ? " minus" : ""}">${money(p.net_profit)}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No sales in the last 30 days.</td></tr>`;
+
+  document.getElementById("attention").innerHTML = d.attention.length
+    ? d.attention.map(a => `<tr><td>${itemLink(a)}</td><td>${statusTag(a.status)}</td>
+        <td class="muted">${esc(reason(a))}</td></tr>`).join("")
+    : `<tr><td colspan="3" class="empty">Nothing needs attention right now.</td></tr>`;
+
+  const c = d.attention_counts || {};
+  const parts = [
+    [c.oversell, "listed above stock"], [c.out_of_stock, "out of stock"],
+    [c.low, "low on stock"], [c.overstock, "overstocked"],
+  ].filter(([n]) => n).map(([n, label]) => `${num(n)} ${label}`);
+  document.getElementById("attention-more").innerHTML = d.attention_total > d.attention.length
+    ? `The ${d.attention.length} most urgent of ${num(d.attention_total)}: ${parts.join(", ")}. ` +
+      `<a href="/admin/inventory?status=attention" style="color:inherit">See them all in Inventory</a>.`
+    : "";
+
+  document.getElementById("orders").innerHTML = d.recent_orders.length
+    ? d.recent_orders.map(o => `<tr>
+        <td>#${o.id}</td><td class="muted">${esc((o.paid_at || o.created_at || "").replace("T", " ").slice(0, 16))}</td>
+        <td class="num">${num(o.item_count)}</td><td class="num">${money(o.total)}</td>
+        <td><span class="tag ${o.status === "paid" ? "healthy" : "no_sales"}">${esc(o.status === "paid" ? "Paid" : o.status)}</span></td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No store orders yet. Orders placed in the shop appear here.</td></tr>`;
+}
+
+(async () => {
+  try {
+    const res = await fetch(`${API}/overview`);
+    if (!res.ok) throw new Error();
+    render(await res.json());
+  } catch {
+    const msg = document.getElementById("msg");
+    msg.className = "msg error";
+    msg.textContent = "The overview didn't load. Check that the server is running, then refresh.";
+  }
+})();
+</script>
+</body>
+</html>

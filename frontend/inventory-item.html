@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Item history — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>Item history</h1>
+    <p>Purchases, sales, stock, profit and turnover for one item.</p>
+  </div>
+  <div class="head-actions">
+    <div class="period-toggle" id="period-toggle" role="group" aria-label="Reporting period">
+      <button data-period="30">Last 30 days</button>
+      <button data-period="90">Last 90 days</button>
+    </div>
+    <a class="back-link" id="back-link" href="/admin/inventory">All inventory</a>
+  </div>
+</header>
+
+<main>
+  <div class="msg" id="load-msg"></div>
+
+  <div id="content" hidden>
+    <div class="identity">
+      <div id="photo"></div>
+      <div id="about"></div>
+      <div class="stock-panel" id="stock"></div>
+    </div>
+
+    <section>
+      <h2 id="balance-title">Stock movement</h2>
+      <div class="balance" id="balance"></div>
+      <div class="balance-check" id="balance-check"></div>
+    </section>
+
+    <section class="cols">
+      <div>
+        <h2>Profit</h2>
+        <table class="statement" id="profit"></table>
+        <p class="hint" id="profit-note"></p>
+      </div>
+      <div>
+        <h2>Turnover</h2>
+        <table class="statement" id="turnover"></table>
+        <p class="hint">
+          Turnover is cost of goods sold divided by average stock value, measured
+          at the end of each day. Days of inventory is the period length divided by
+          turnover. Sell-through is units sold divided by opening stock plus units
+          received. Sales pace only counts days the item was in stock, so a stockout
+          doesn't make demand look lower than it is. Turnover spikes for an item
+          that ran out of stock, because its average stock value was near zero.
+        </p>
+      </div>
+    </section>
+
+    <section class="cols">
+      <div>
+        <h2>Units on hand</h2>
+        <div class="chart-box"><canvas id="stock-chart" aria-label="Units on hand per day"></canvas></div>
+      </div>
+      <div>
+        <h2>Units sold per week</h2>
+        <div class="chart-box"><canvas id="sales-chart" aria-label="Units sold per week by channel"></canvas></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>By channel</h2>
+      <table class="data">
+        <thead><tr>
+          <th>Channel</th><th class="num">Units</th><th class="num">Share</th><th class="num">Revenue</th>
+          <th class="num">Cost of goods</th><th class="num">Fees</th><th class="num">Net profit</th><th class="num">Net margin</th>
+        </tr></thead>
+        <tbody id="channels"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Record stock received or an adjustment</h2>
+      <div class="entry">
+        <div>
+          <label for="mv-type">Type</label>
+          <select id="mv-type">
+            <option value="purchase">Stock received</option>
+            <option value="adjustment">Adjustment</option>
+          </select>
+        </div>
+        <div>
+          <label for="mv-qty" id="qty-label">Units</label>
+          <input id="mv-qty" type="number" step="1" inputmode="numeric">
+        </div>
+        <div id="cost-field">
+          <label for="mv-cost">Cost per unit ($)</label>
+          <input id="mv-cost" type="number" step="0.01" min="0.01" inputmode="decimal">
+        </div>
+        <div>
+          <label for="mv-ref" id="ref-label">Purchase order or invoice</label>
+          <input id="mv-ref" type="text" maxlength="120">
+        </div>
+        <div><button class="primary" id="mv-submit" type="button">Record stock received</button></div>
+      </div>
+      <div class="msg" id="mv-msg" aria-live="polite"></div>
+    </section>
+
+    <section>
+      <h2>Movement ledger</h2>
+      <table class="data">
+        <thead><tr>
+          <th>Date</th><th>Movement</th><th>Channel</th><th class="num">Units</th>
+          <th class="num">Unit cost or price</th><th class="num">Fee</th><th class="num">Balance</th><th>Reference</th>
+        </tr></thead>
+        <tbody id="ledger"></tbody>
+      </table>
+      <p class="hint">The 30 most recent movements. Every change to stock is recorded here; on-hand is the running total of this ledger.</p>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="/static/ops.js"></script>
+<script>
+const sku = new URLSearchParams(location.search).get("sku");
+let period = readPeriod();
+let stockChart = null;
+let salesChart = null;
+
+const MOVEMENT_NAMES = { purchase: "Stock received", sale: "Sale", adjustment: "Adjustment" };
+
+async function load() {
+  const msg = document.getElementById("load-msg");
+  document.getElementById("back-link").href = `/admin/inventory?period=${period}`;
+  if (!sku) {
+    msg.className = "msg error";
+    msg.textContent = "No item selected. Go back to the inventory list and choose one.";
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/inventory/${encodeURIComponent(sku)}?period=${period}`);
+    if (res.status === 404) {
+      msg.className = "msg error";
+      msg.textContent = `There's no item with SKU ${sku}. Go back to the inventory list and choose one.`;
+      return;
+    }
+    if (!res.ok) throw new Error();
+    render(await res.json());
+    msg.textContent = "";
+    document.getElementById("content").hidden = false;
+  } catch {
+    msg.className = "msg error";
+    msg.textContent = "This item didn't load. Start the backend with `python app.py` (it runs on port 5050), then refresh.";
+  }
+}
+
+function render(d) {
+  document.title = `${d.product.title} — SkuTrail`;
+  renderIdentity(d);
+  renderBalance(d.reconciliation);
+  renderProfit(d.profit, d.fee_rules);
+  renderTurnover(d.turnover);
+  renderCharts(d.series);
+  renderChannels(d.channels);
+  renderLedger(d.movements);
+}
+
+// Items imported from the store link back to their product page.
+function storeLink(url) {
+  if (!url) return "";
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return `<a class="store-link" href="${esc(url)}" target="_blank" rel="noopener">View on ${esc(host)}</a>`;
+  } catch {
+    return "";
+  }
+}
+
+function renderIdentity(d) {
+  const p = d.product, s = d.stock;
+  document.getElementById("photo").innerHTML = tile(p.sku, p.image, true);
+  document.getElementById("about").innerHTML = `
+    <h2>${esc(p.title)}</h2>
+    <div class="facts">SKU ${esc(p.sku)}${p.brand ? `, ${esc(p.brand)}` : ""}. Sells for ${money(p.price)} on your site.
+      ${storeLink(p.source_url)}</div>
+    ${statusTag(d.status)}
+    <p class="advice">${d.reorder.suggested ? `<strong>Reorder ${d.reorder.quantity} units.</strong> ` : ""}${esc(d.reorder.reason)}</p>
+    ${(d.references || []).filter(r => r.price != null).map(r =>
+      `<p class="hint">When you created this item, ${esc(r.site)} was selling it for ${money(r.price)}.</p>`).join("")}`;
+
+  const listedRows = ["amazon", "ebay", "website"].map(ch => {
+    const q = s.listed[ch];
+    const over = s.oversell_channels.includes(ch);
+    return `<tr><td>Listed on ${CHANNEL_NAMES[ch]}</td>
+            <td class="${over ? "minus" : ""}">${q === null || q === undefined ? "not synced" : num(q)}</td></tr>`;
+  }).join("");
+
+  const oversell = s.oversell_channels.map(c => CHANNEL_NAMES[c]).join(" and ");
+  document.getElementById("stock").innerHTML = `
+    <div class="muted">Physically on hand</div>
+    <div class="fig">${num(s.on_hand)}</div>
+    <table class="statement">
+      <tr><td>Average cost per unit</td><td>${money(s.avg_cost)}</td></tr>
+      <tr><td>Stock value</td><td>${money(s.inventory_value)}</td></tr>
+      ${listedRows}
+    </table>
+    ${oversell ? `<div class="warning">${oversell} lists more units than you physically have. Lower the listed quantity to avoid selling stock you don't own.</div>` : ""}
+    ${s.matches_storefront ? "" : `<div class="warning">Your site shows ${s.storefront_qty} in stock but the ledger says ${s.on_hand}. Record an adjustment to correct it.</div>`}`;
+}
+
+function renderBalance(r) {
+  document.getElementById("balance-title").textContent = `Stock movement, last ${period} days`;
+  const term = (n, label, extra = "") => `<div class="term ${extra}"><div class="n">${num(n)}</div><div class="l">${label}</div></div>`;
+  const op = symbol => `<div class="op" aria-hidden="true">${symbol}</div>`;
+  document.getElementById("balance").innerHTML =
+    term(r.opening, "Opening stock") + op("+") +
+    term(r.purchased, "Received") + op("−") +
+    term(r.sold, "Sold") + op(r.adjusted < 0 ? "−" : "+") +
+    term(Math.abs(r.adjusted), "Adjusted") + op("=") +
+    term(r.closing, "Closing stock", "closing");
+  const check = document.getElementById("balance-check");
+  check.className = "balance-check " + (r.reconciles ? "plus" : "minus");
+  check.textContent = r.reconciles
+    ? "The ledger balances: every unit is accounted for."
+    : "The ledger doesn't balance. A movement is missing or was entered twice; review the ledger below.";
+}
+
+function renderProfit(p, feeRules) {
+  const pctNote = v => `<span class="pctnote">${pct(v)} of revenue</span>`;
+  document.getElementById("profit").innerHTML = `
+    <tr><td>Revenue</td><td>${money(p.revenue)}</td></tr>
+    <tr><td>Cost of goods sold</td><td>${money(-p.cogs)}</td></tr>
+    <tr class="subtotal"><td>Gross profit ${pctNote(p.gross_margin_pct)}</td><td>${money(p.gross_profit)}</td></tr>
+    <tr><td>Channel and payment fees</td><td>${money(-p.fees)}</td></tr>
+    <tr><td>Written off (damaged or lost)</td><td>${money(-p.writeoffs)}</td></tr>
+    <tr class="total"><td>Net profit ${pctNote(p.net_margin_pct)}</td><td class="${p.net_profit < 0 ? "minus" : ""}">${money(p.net_profit)}</td></tr>`;
+
+  const rates = Object.entries(feeRules).map(([ch, r]) => {
+    const percent = +(r.pct * 100).toFixed(2);
+    return `${CHANNEL_NAMES[ch] || ch} ${percent}%${r.fixed_per_order ? ` plus ${money(r.fixed_per_order)} per order` : ""}`;
+  }).join("; ");
+  const u = p.per_unit;
+  document.getElementById("profit-note").textContent = (u.avg_price === null
+    ? "No sales in this period. "
+    : `Each unit sold for ${money(u.avg_price)} on average, cost ${money(u.avg_cost)} and paid ${money(u.avg_fee)} in fees, leaving ${money(u.net_profit)}. `)
+    + `Fees use sample rates (${rates}); set your real rates in FEE_RULES in inventory.py.`;
+}
+
+function renderTurnover(t) {
+  document.getElementById("turnover").innerHTML = `
+    <tr><td>Average stock value</td><td>${money(t.avg_inventory_value)}</td></tr>
+    <tr><td>Turnover in these ${period} days</td><td>${t.turnover === null ? "—" : num(t.turnover, 2) + "×"}</td></tr>
+    <tr><td>Turnover per year</td><td>${times(t.turnover_annualized)}</td></tr>
+    <tr><td>Days of inventory</td><td>${t.days_of_inventory === null ? "—" : num(t.days_of_inventory) + " days"}</td></tr>
+    <tr><td>Sell-through</td><td>${pct(t.sell_through_pct)}</td></tr>
+    <tr class="group"><td>Sales pace (${t.in_stock_days_last_30} of the last 30 days in stock)</td><td>${num(t.velocity_per_day, 2)} a day</td></tr>
+    <tr><td>Days of stock left</td><td>${t.days_of_stock_left === null ? "—" : num(t.days_of_stock_left) + " days"}</td></tr>`;
+}
+
+function renderCharts(series) {
+  const boxes = document.querySelectorAll(".chart-box");
+  if (!window.Chart) {
+    boxes.forEach(b => {
+      b.innerHTML = `<p class="empty">Charts need an internet connection (Chart.js loads from a CDN). The numbers above are unaffected.</p>`;
+    });
+    return;
+  }
+  const grid = { color: "#ececea" };
+  const ticks = { color: "#5c5c5c", font: { family: "Inter", size: 11 } };
+  const received = new Set(series.purchases.map(p => p.date));
+  const daily = series.daily_stock;
+
+  if (stockChart) stockChart.destroy();
+  stockChart = new Chart(document.getElementById("stock-chart"), {
+    type: "line",
+    data: {
+      labels: daily.map(d => d.date.slice(5)),
+      datasets: [{
+        label: "Units on hand",
+        data: daily.map(d => d.balance),
+        borderColor: "#000000",
+        backgroundColor: "rgba(0,0,0,0.05)",
+        fill: true,
+        stepped: "before",
+        borderWidth: 2,
+        pointRadius: daily.map(d => received.has(d.date) ? 4 : 0),
+        pointBackgroundColor: "#1b7f4b",
+        pointBorderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { afterLabel: ctx => received.has(daily[ctx.dataIndex].date) ? "Stock received this day" : "" } },
+      },
+      scales: { x: { ticks: { ...ticks, maxTicksLimit: 8 }, grid }, y: { beginAtZero: true, ticks: { ...ticks, precision: 0 }, grid } },
+    },
+  });
+
+  const weeks = series.weekly_sales;
+  if (salesChart) salesChart.destroy();
+  salesChart = new Chart(document.getElementById("sales-chart"), {
+    type: "bar",
+    data: {
+      labels: weeks.map(w => w.week.slice(5)),
+      datasets: ["amazon", "ebay", "website"].map(ch => ({
+        label: CHANNEL_NAMES[ch],
+        data: weeks.map(w => w[ch] || 0),
+        backgroundColor: CHANNEL_COLORS[ch],
+        borderRadius: 2,
+      })),
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { labels: { color: "#5c5c5c", boxWidth: 10, font: { family: "Inter", size: 12 } } } },
+      scales: {
+        x: { stacked: true, ticks, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, ticks: { ...ticks, precision: 0 }, grid },
+      },
+    },
+  });
+}
+
+function renderChannels(channels) {
+  document.getElementById("channels").innerHTML = channels.map(c => `
+    <tr>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:${CHANNEL_COLORS[c.channel] || "#5c5c5c"}"></span>${esc(CHANNEL_NAMES[c.channel] || c.channel)}</td>
+      <td class="num">${num(c.units)}</td>
+      <td class="num">${pct(c.unit_share_pct)}</td>
+      <td class="num">${money(c.revenue)}</td>
+      <td class="num">${money(c.cogs)}</td>
+      <td class="num">${money(c.fees)}</td>
+      <td class="num${c.net_profit < 0 ? " minus" : ""}">${money(c.net_profit)}</td>
+      <td class="num">${pct(c.net_margin_pct)}</td>
+    </tr>`).join("");
+}
+
+function renderLedger(rows) {
+  const body = document.getElementById("ledger");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="8" class="empty">No movements yet. Record the first stock you received above.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(m => {
+    const unit = m.movement_type === "purchase" ? money(m.unit_cost)
+               : m.movement_type === "sale" ? money(m.unit_price) : "—";
+    const ref = [m.reference, m.note].filter(Boolean).map(esc).join(", ");
+    return `<tr>
+      <td class="code">${esc(m.occurred_at.slice(0, 16))}</td>
+      <td>${MOVEMENT_NAMES[m.movement_type] || esc(m.movement_type)}</td>
+      <td>${m.channel ? esc(CHANNEL_NAMES[m.channel] || m.channel) : "—"}</td>
+      <td class="num ${m.quantity > 0 ? "plus" : "minus"}">${m.quantity > 0 ? "+" : "−"}${num(Math.abs(m.quantity))}</td>
+      <td class="num">${unit}</td>
+      <td class="num">${m.fee ? money(m.fee) : "—"}</td>
+      <td class="num">${num(m.balance)}</td>
+      <td class="muted">${ref || "—"}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ---- Record stock received / adjustment ----
+function syncEntryForm() {
+  const received = document.getElementById("mv-type").value === "purchase";
+  document.getElementById("cost-field").style.visibility = received ? "visible" : "hidden";
+  document.getElementById("qty-label").textContent = received ? "Units" : "Units (+ found, − lost)";
+  document.getElementById("ref-label").textContent = received ? "Purchase order or invoice" : "Reason";
+  document.getElementById("mv-ref").placeholder = received ? "PO 1042" : "Damaged in storage";
+  document.getElementById("mv-submit").textContent = received ? "Record stock received" : "Record adjustment";
+}
+
+async function submitMovement() {
+  const msg = document.getElementById("mv-msg");
+  const type = document.getElementById("mv-type").value;
+  const quantity = Number(document.getElementById("mv-qty").value);
+  const unitCost = Number(document.getElementById("mv-cost").value);
+  const ref = document.getElementById("mv-ref").value.trim();
+
+  msg.className = "msg";
+  if (!Number.isInteger(quantity) || quantity === 0) {
+    msg.className = "msg error";
+    msg.textContent = "Enter a whole number of units other than zero.";
+    return;
+  }
+  if (type === "purchase" && (quantity < 0 || !(unitCost > 0))) {
+    msg.className = "msg error";
+    msg.textContent = "Stock received needs a positive number of units and a cost per unit.";
+    return;
+  }
+
+  const button = document.getElementById("mv-submit");
+  button.disabled = true;
+  try {
+    const res = await fetch(`${API}/inventory/${encodeURIComponent(sku)}/movements`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        quantity,
+        unit_cost: type === "purchase" ? unitCost : null,
+        reference: type === "purchase" ? ref : null,
+        note: type === "adjustment" ? ref : null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "The movement wasn't recorded.");
+    ["mv-qty", "mv-cost", "mv-ref"].forEach(id => { document.getElementById(id).value = ""; });
+    await load();
+    msg.className = "msg ok";
+    msg.textContent = type === "purchase"
+      ? `Stock received recorded. ${data.on_hand} now on hand.`
+      : `Adjustment recorded. ${data.on_hand} now on hand.`;
+  } catch (e) {
+    msg.className = "msg error";
+    msg.textContent = e.message === "Failed to fetch"
+      ? "The backend isn't responding. Start it with `python app.py`, then try again."
+      : e.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.getElementById("mv-type").onchange = syncEntryForm;
+document.getElementById("mv-submit").onclick = submitMovement;
+setupPeriodToggle(period, p => {
+  period = p;
+  history.replaceState(null, "", `?sku=${encodeURIComponent(sku || "")}&period=${p}`);
+  load();
+});
+syncEntryForm();
+load();
+</script>
+</body>
+</html>

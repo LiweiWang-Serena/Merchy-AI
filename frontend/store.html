@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SkuTrail Demo Store</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/store.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="/">SkuTrail Demo Store</a>
+  <nav>
+    <a href="/">Shop</a>
+    <a class="cart-link" href="/cart">Cart <span id="cart-badge">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <h1 class="page-title">In stock now</h1>
+  <p class="page-subtitle">Sample powersports and small-engine parts. A demo store for SkuTrail: nothing is charged or shipped.</p>
+
+  <section id="best-section" hidden>
+    <h2 class="section-title">Best sellers</h2>
+    <div class="product-grid" id="best-grid"></div>
+  </section>
+
+  <section>
+    <div class="shop-tools">
+      <h2 class="section-title" id="all-title">All items</h2>
+      <input id="shop-search" type="search" placeholder="Search by part, model or SKU" aria-label="Search the shop" autocomplete="off">
+    </div>
+    <div class="product-grid" id="product-grid"></div>
+    <div class="shop-pager" id="shop-pager"></div>
+    <p class="load-error" id="load-error" hidden>The shop couldn't load. Refresh the page to try again.</p>
+  </section>
+</main>
+
+<script src="/static/cart.js"></script>
+<script>
+const API = "/api";
+
+function stockLabel(qty) {
+  if (qty <= 0) return `<div class="p-stock out">Sold out</div>`;
+  if (qty <= 3) return `<div class="p-stock low">Only ${qty} left</div>`;
+  return `<div class="p-stock">${qty} in stock</div>`;
+}
+
+function card(p) {
+  return `
+    <a class="product-card" href="/product?sku=${encodeURIComponent(p.sku)}">
+      <div class="thumb">${productImage((p.images || [p.image])[0], p.title)}</div>
+      <div class="info">
+        <div class="p-title">${escapeHtml(p.title)}</div>
+        ${p.brand ? `<div class="p-brand">${escapeHtml(p.brand)}</div>` : ""}
+        <div class="p-price">$${Number(p.price).toFixed(2)}</div>
+        ${stockLabel(p.inventory_qty)}
+      </div>
+    </a>`;
+}
+
+const PER_PAGE = 24;
+const params = new URLSearchParams(location.search);
+const shop = { q: params.get("q") || "", page: Number(params.get("page")) || 1 };
+let request = 0;
+
+async function loadBestSellers() {
+  try {
+    const best = await fetch(`${API}/store/best-sellers`).then(r => r.json());
+    if (best.length) {
+      document.getElementById("best-grid").innerHTML = best.map(card).join("");
+      document.getElementById("best-section").hidden = !!shop.q;
+    }
+  } catch { /* the rest of the shop still works */ }
+}
+
+async function loadProducts() {
+  const mine = ++request;   // ignore answers to searches already typed past
+  const query = new URLSearchParams({ page: shop.page, per_page: PER_PAGE, q: shop.q });
+  const address = new URLSearchParams();
+  if (shop.q) address.set("q", shop.q);
+  if (shop.page > 1) address.set("page", shop.page);
+  history.replaceState(null, "", address.toString() ? `?${address}` : location.pathname);
+  try {
+    const data = await fetch(`${API}/products?${query}`).then(r => r.json());
+    if (mine !== request) return;
+    shop.page = data.page;
+    document.getElementById("best-section").hidden = !!shop.q || !document.getElementById("best-grid").children.length;
+    document.getElementById("all-title").textContent = shop.q
+      ? `${data.total.toLocaleString()} ${data.total === 1 ? "result" : "results"} for “${shop.q}”`
+      : `All items (${data.total.toLocaleString()})`;
+    document.getElementById("product-grid").innerHTML = data.items.length
+      ? data.items.map(card).join("")
+      : `<p class="empty-results">Nothing matches that search. Try a part name, a model such as “Kodiak 450”, or a SKU.</p>`;
+    const pager = document.getElementById("shop-pager");
+    pager.innerHTML = data.pages > 1 ? `
+      <button type="button" class="pager-btn" id="prev" ${data.page <= 1 ? "disabled" : ""}>Previous</button>
+      <span>Page ${data.page.toLocaleString()} of ${data.pages.toLocaleString()}</span>
+      <button type="button" class="pager-btn" id="next" ${data.page >= data.pages ? "disabled" : ""}>Next</button>` : "";
+    const go = page => { shop.page = page; loadProducts(); document.getElementById("all-title").scrollIntoView(); };
+    if (data.pages > 1) {
+      document.getElementById("prev").onclick = () => go(data.page - 1);
+      document.getElementById("next").onclick = () => go(data.page + 1);
+    }
+    document.getElementById("load-error").hidden = true;
+  } catch {
+    if (mine === request) document.getElementById("load-error").hidden = false;
+  }
+}
+
+const searchBox = document.getElementById("shop-search");
+searchBox.value = shop.q;
+let typing;
+searchBox.oninput = () => {
+  clearTimeout(typing);
+  typing = setTimeout(() => { shop.q = searchBox.value.trim(); shop.page = 1; loadProducts(); }, 250);
+};
+
+loadBestSellers();
+loadProducts();
+</script>
+
+<script src="/static/support-widget.js"></script>
+</body>
+</html>

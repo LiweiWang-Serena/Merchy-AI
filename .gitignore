@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.db
+.DS_Store
+.env
+.venv/
+
+# React version: installed packages and build output
+frontend-react/node_modules/
+frontend-react/dist/

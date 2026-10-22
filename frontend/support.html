@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Support — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+<style>
+  .intro { max-width: 72ch; }
+  .status-line { border: 1px solid var(--rule); border-radius: 4px; padding: 12px 16px; max-width: 860px; }
+  .status-line.off { border-color: var(--brass-dim); }
+  .badge { font: 600 11.5px var(--sans); border-radius: 3px; padding: 2px 7px; white-space: nowrap; }
+  .badge.human { background: rgba(179,38,30,.1); color: var(--out); }
+  .badge.sample { background: rgba(140,100,24,.12); color: var(--brass); }
+  .convo { margin-top: 18px; border: 1px solid var(--rule); border-radius: 6px; padding: 16px 18px; max-width: 860px; }
+  .convo h3 { font: 600 16px var(--serif); margin: 0 0 4px; }
+  .msg { margin-top: 14px; }
+  .msg .who { font: 600 12px var(--sans); color: var(--dim); text-transform: none; }
+  .msg .body { white-space: pre-wrap; margin-top: 2px; }
+  .msg.customer .body { font-weight: 500; }
+  .review { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .review button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .review textarea, .editor textarea, .editor input, .settings textarea, .settings input {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border-radius: 3px;
+    font: 14px/1.5 var(--sans); color: var(--ink); background: #fff; }
+  .review textarea { margin-top: 6px; min-height: 70px; }
+  .correction-note { font-size: 12.5px; color: var(--in); }
+  .msg.staff .who { color: var(--ink); }
+  .msg.staff .body { border-left: 3px solid var(--ink); padding-left: 10px; }
+  .badge.handling { background: var(--row); color: var(--ink); }
+  .convo-state { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 8px 0 4px; }
+  .reply-box { margin-top: 18px; border-top: 1px solid var(--row); padding-top: 14px; }
+  .reply-box textarea { width: 100%; min-height: 80px; padding: 9px 11px; border: 1px solid var(--rule);
+    border-radius: 3px; font: 14px/1.5 var(--sans); color: var(--ink); }
+  .article { border-bottom: 1px solid var(--row); padding: 12px 0; max-width: 860px; }
+  .article .t { font-weight: 600; display: flex; gap: 10px; align-items: center; }
+  .article .c { color: var(--dim); margin-top: 4px; white-space: pre-wrap; }
+  .article .actions { margin-top: 6px; display: flex; gap: 12px; }
+  .editor, .settings { max-width: 860px; display: grid; gap: 10px; margin-top: 14px; }
+  .editor textarea { min-height: 110px; }
+  .settings textarea { min-height: 70px; }
+  .settings label, .editor label { font-size: 13px; color: var(--dim); }
+</style>
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>Support</h1>
+    <p class="intro">The AI assistant in the shop's chat. Teach it with articles and corrections: it answers
+      from your articles, follows the answers you correct, and looks up products, stock and orders itself.</p>
+  </div>
+  <div class="head-actions"><a class="store-link" href="/" target="_blank" rel="noopener">Open the shop to chat</a></div>
+</header>
+
+<main>
+  <div class="msg" id="msg" aria-live="polite"></div>
+  <div class="status-line" id="status"></div>
+
+  <section>
+    <h2>Conversations</h2>
+    <table class="data">
+      <thead><tr><th>Last message</th><th>First question</th><th class="num">Messages</th><th>Needs</th></tr></thead>
+      <tbody id="conversations"></tbody>
+    </table>
+    <div id="conversation"></div>
+  </section>
+
+  <section>
+    <h2>Knowledge articles</h2>
+    <p class="hint">What the assistant may tell customers about policies. It won't answer policy questions
+      that aren't covered here; it offers a person instead.</p>
+    <div id="articles"></div>
+    <div class="editor">
+      <h3 style="font: 600 16px var(--serif); margin: 10px 0 0" id="editor-title">Add an article</h3>
+      <label for="a-title">Title</label>
+      <input id="a-title" maxlength="120" placeholder="For example: Warranty">
+      <label for="a-content">What customers should know</label>
+      <textarea id="a-content" maxlength="4000" placeholder="Write it the way you'd explain it to a customer."></textarea>
+      <div class="button-row">
+        <button class="primary" id="a-save" type="button">Save article</button>
+        <button class="quiet" id="a-cancel" type="button" hidden>Cancel editing</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Name, greeting and tone</h2>
+    <div class="settings">
+      <label for="s-store">Store name (how the assistant refers to the shop)</label>
+      <input id="s-store" maxlength="80">
+      <label for="s-name">Assistant name</label>
+      <input id="s-name" maxlength="80">
+      <label for="s-staff">Name shown on replies you write yourself</label>
+      <input id="s-staff" maxlength="80" placeholder="For example: Serena">
+      <label for="s-greeting">Greeting shown when a customer opens the chat</label>
+      <textarea id="s-greeting" maxlength="600"></textarea>
+      <label for="s-tone">Tone (how it should sound)</label>
+      <textarea id="s-tone" maxlength="1500"></textarea>
+      <div class="button-row"><button class="primary" id="s-save" type="button">Save</button></div>
+    </div>
+    <p class="hint">It always says it's an AI assistant and offers a person, whatever the name and tone.</p>
+  </section>
+</main>
+
+<script src="/static/ops.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let editingId = null;
+
+function note(text, kind = "") { $("msg").className = "msg" + (kind ? " " + kind : ""); $("msg").textContent = text; }
+
+async function call(path, body) {
+  const res = await fetch(`${API}${path}`, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "That didn't work. Try again.");
+  return data;
+}
+
+function renderStatus(d) {
+  const el = $("status");
+  const on = Object.entries(d.notifications).filter(([, v]) => v).map(([k]) => k === "slack" ? "Slack" : "email");
+  el.className = "status-line" + (d.ai_ready ? "" : " off");
+  el.innerHTML = (d.ai_ready
+    ? `Connected to ${d.provider === "gemini" ? "Gemini" : "Claude"} (<code>${esc(d.model)}</code>). Replies use your
+       articles, corrections and live store data.`
+    : `Offline mode: with no AI key in <code>backend/.env</code>, the chat can only return the best-matching article.
+       Add <code>ANTHROPIC_API_KEY</code> (Claude) or <code>GEMINI_API_KEY</code> (Gemini) and restart the server
+       to turn the AI on.`)
+    + `<br>${on.length ? `When a customer asks for a person, you're told by ${on.join(" and ")}.`
+                      : `When a customer asks for a person, the conversation is flagged here. To be told by Slack or
+                         email as well, set <code>SLACK_WEBHOOK_URL</code> or the <code>SMTP_</code> settings in <code>backend/.env</code>.`}`;
+}
+
+let conversations = [];
+let openId = null;
+let openCount = 0;
+
+function needsBadge(c) {
+  if (!c.needs_human) return "";
+  return c.last_by === "customer" ? `<span class="badge human">Waiting for you</span>`
+                                  : `<span class="badge handling">A person is handling</span>`;
+}
+
+function renderConversations(list) {
+  conversations = list;
+  $("conversations").innerHTML = list.length ? list.map(c => `
+    <tr class="link" tabindex="0" data-id="${esc(c.id)}">
+      <td class="muted">${esc(c.last_message_at.slice(0, 16))}</td>
+      <td>${esc((c.first_question || "").slice(0, 90))}</td>
+      <td class="num">${num(c.message_count)}</td>
+      <td>${needsBadge(c)}</td>
+    </tr>`).join("")
+    : `<tr><td colspan="4" class="empty">No conversations yet. Open the shop and try the chat in the corner.</td></tr>`;
+  document.querySelectorAll("#conversations tr.link").forEach(tr => {
+    tr.onclick = () => openConversation(tr.dataset.id);
+    tr.onkeydown = e => { if (e.key === "Enter") openConversation(tr.dataset.id); };
+  });
+}
+
+function messageHtml(m) {
+  const who = m.staff_name ? `${esc(m.staff_name)} (you, from the team)` : m.role === "customer" ? "Customer" : "AI assistant";
+  const cls = m.staff_name ? "staff" : m.role;
+  const reviewable = m.role === "assistant" && !m.staff_name;
+  return `
+    <div class="msg ${cls}" data-id="${m.id}">
+      <div class="who">${who} · ${esc(m.created_at.slice(11, 16))}</div>
+      <div class="body">${esc(m.content)}</div>
+      ${reviewable ? `
+        <div class="review">
+          <button class="secondary${m.rating === 1 ? " on" : ""}" type="button" data-rate="1">Good answer</button>
+          <button class="secondary${m.rating === -1 ? " on" : ""}" type="button" data-rate="-1">Needs work</button>
+          ${m.correction ? `<span class="correction-note">Your corrected answer is being used as an example.</span>` : ""}
+        </div>
+        <textarea placeholder="Write the answer you'd want instead. The assistant will follow it as an example."
+          ${m.correction ? "" : "hidden"}>${esc(m.correction || "")}</textarea>
+        <div class="button-row" ${m.correction ? "" : "hidden"}><button class="primary" type="button" data-save>Save corrected answer</button></div>` : ""}
+    </div>`;
+}
+
+function renderConversation(c, keepReply) {
+  const draft = keepReply && $("reply-text") ? $("reply-text").value : "";
+  openCount = c.messages.length;
+  $("conversation").innerHTML = `
+    <div class="convo">
+      <h3>Conversation from ${esc(c.started_at.slice(0, 16))}</h3>
+      <div class="convo-state">
+        ${c.needs_human
+          ? `<span class="badge human">A person is handling this</span><span class="muted">The AI is paused.
+             ${esc(c.handoff_summary || "")}</span>
+             <button class="secondary" type="button" id="resolve-btn">Mark resolved, hand back to the AI</button>`
+          : `<span class="muted">The AI is answering. Reply below to take over.</span>`}
+        ${c.customer_email ? `<span class="muted">Email: <a href="mailto:${esc(c.customer_email)}">${esc(c.customer_email)}</a></span>` : ""}
+      </div>
+      <div id="convo-messages">${c.messages.map(messageHtml).join("")}</div>
+      <div class="reply-box">
+        <label for="reply-text" class="hint" style="display:block; margin: 0 0 6px">Your reply appears in the customer's chat, with your name.</label>
+        <textarea id="reply-text" maxlength="4000" placeholder="Type your reply to the customer"></textarea>
+        <div class="button-row"><button class="primary" type="button" id="reply-btn">Send reply</button></div>
+      </div>
+    </div>`;
+  $("reply-text").value = draft;
+  wireReviews(c.id);
+  $("reply-btn").onclick = async () => {
+    const text = $("reply-text").value;
+    try {
+      const updated = await call(`/support/conversations/${encodeURIComponent(c.id)}/reply`, { text });
+      $("reply-text").value = "";
+      renderConversation(updated, false);
+      note("Sent. The customer sees it in their chat within a few seconds.", "ok");
+    } catch (e) { note(e.message, "error"); }
+  };
+  if ($("resolve-btn")) $("resolve-btn").onclick = async () => {
+    try {
+      renderConversation(await call(`/support/conversations/${encodeURIComponent(c.id)}/resolve`, {}), true);
+      note("Resolved. The AI answers this customer again.", "ok");
+    } catch (e) { note(e.message, "error"); }
+  };
+}
+
+function wireReviews(id) {
+  $("conversation").querySelectorAll(".msg.assistant").forEach(el => {
+    const box = el.querySelector("textarea"), save = el.querySelector("[data-save]");
+    if (!box || !save) return;
+    el.querySelectorAll("[data-rate]").forEach(b => b.onclick = async () => {
+      const rating = Number(b.dataset.rate);
+      if (rating === -1) { box.hidden = false; save.parentElement.hidden = false; box.focus(); }
+      await review(el.dataset.id, rating, box.value);
+      el.querySelectorAll("[data-rate]").forEach(x => x.classList.toggle("on", x === b));
+    });
+    save.onclick = async () => {
+      await review(el.dataset.id, -1, box.value);
+      note("Saved. The assistant will use this answer as an example from now on.", "ok");
+      openConversation(id, true);
+    };
+  });
+}
+
+async function openConversation(id, quiet) {
+  try {
+    const c = await call(`/support/conversations/${encodeURIComponent(id)}`);
+    const changed = id !== openId;
+    openId = id;
+    renderConversation(c, !changed);
+    if (changed && !quiet) $("conversation").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) { note(e.message, "error"); }
+}
+
+// Every 5 seconds: new customer messages in the open conversation, and the list.
+async function refresh() {
+  try {
+    const d = await call("/support/admin");
+    renderConversations(d.conversations);
+    if (openId) {
+      const c = await call(`/support/conversations/${encodeURIComponent(openId)}`);
+      const typing = document.activeElement && document.activeElement.closest(".review");
+      if (c.messages.length !== openCount && !typing) renderConversation(c, true);
+    }
+  } catch { /* the next refresh will try again */ }
+}
+
+async function review(messageId, rating, correction) {
+  try { await call(`/support/messages/${messageId}/review`, { rating, correction: correction || null }); }
+  catch (e) { note(e.message, "error"); }
+}
+
+function renderArticles(list) {
+  $("articles").innerHTML = list.length ? list.map(a => `
+    <div class="article" data-id="${a.id}">
+      <div class="t">${esc(a.title)} ${a.is_sample ? `<span class="badge sample">Example: edit to match your store</span>` : ""}</div>
+      <div class="c">${esc(a.content)}</div>
+      <div class="actions"><button class="quiet" type="button" data-edit>Edit</button>
+        <button class="quiet" type="button" data-delete>Delete</button></div>
+    </div>`).join("") : `<p class="empty">No articles yet.</p>`;
+  $("articles").querySelectorAll(".article").forEach(el => {
+    const a = list.find(x => String(x.id) === el.dataset.id);
+    el.querySelector("[data-edit]").onclick = () => {
+      editingId = a.id;
+      $("a-title").value = a.title;
+      $("a-content").value = a.content;
+      $("editor-title").textContent = `Editing: ${a.title}`;
+      $("a-cancel").hidden = false;
+      $("a-title").focus();
+    };
+    el.querySelector("[data-delete]").onclick = async () => {
+      if (!confirm(`Delete the article "${a.title}"?`)) return;
+      try { renderArticles(await call(`/support/knowledge/${a.id}/delete`, {})); note("Article deleted.", "ok"); }
+      catch (e) { note(e.message, "error"); }
+    };
+  });
+}
+
+function resetEditor() {
+  editingId = null;
+  $("a-title").value = "";
+  $("a-content").value = "";
+  $("editor-title").textContent = "Add an article";
+  $("a-cancel").hidden = true;
+}
+
+$("a-save").onclick = async () => {
+  try {
+    renderArticles(await call("/support/knowledge", { id: editingId, title: $("a-title").value, content: $("a-content").value }));
+    note(editingId ? "Article updated." : "Article added.", "ok");
+    resetEditor();
+  } catch (e) { note(e.message, "error"); }
+};
+$("a-cancel").onclick = resetEditor;
+
+$("s-save").onclick = async () => {
+  try {
+    await call("/support/settings", { store_name: $("s-store").value, assistant_name: $("s-name").value,
+                                      staff_name: $("s-staff").value,
+                                      greeting: $("s-greeting").value, tone: $("s-tone").value });
+    note("Saved. New chats use these settings.", "ok");
+  } catch (e) { note(e.message, "error"); }
+};
+
+(async () => {
+  try {
+    const d = await call("/support/admin");
+    renderStatus(d);
+    renderConversations(d.conversations);
+    renderArticles(d.knowledge);
+    $("s-store").value = d.settings.store_name;
+    $("s-name").value = d.settings.assistant_name;
+    $("s-staff").value = d.settings.staff_name;
+    $("s-greeting").value = d.settings.greeting;
+    $("s-tone").value = d.settings.tone;
+    const linked = new URLSearchParams(location.search).get("c");   // from a notification's link
+    if (linked) openConversation(linked);
+    setInterval(refresh, 5000);
+  } catch (e) { note("The Support page didn't load. Check that the server is running, then refresh.", "error"); }
+})();
+</script>
+</body>
+</html>

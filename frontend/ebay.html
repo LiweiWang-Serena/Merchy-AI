@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>eBay account — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+<style>
+  .steps { padding-left: 22px; max-width: 72ch; line-height: 1.6; }
+  .steps li { margin-bottom: 16px; padding-left: 4px; }
+  .steps code, .setup code { font-family: var(--mono); font-size: 12.5px; background: var(--panel);
+    border: 1px solid var(--row); border-radius: 3px; padding: 1px 5px; }
+  .env-tag { font: 600 12.5px var(--sans); border: 1px solid var(--rule); border-radius: 3px; padding: 4px 9px; }
+  .env-tag.sandbox { color: var(--ebay); border-color: var(--ebay); }
+  .paste { margin-top: 10px; max-width: 820px; }
+  .inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  #connected .check-field { margin-bottom: 4px; }
+  #connected select { padding: 9px 10px; border: 1px solid var(--rule); border-radius: 3px;
+    font: 500 14px var(--sans); background: #fff; color: var(--ink); }
+  #result { margin-top: 34px; }
+  /* Whichever of these is showing sits right under the header. */
+  #setup, #connect, #connected { margin-top: 6px; }
+  #result h3 { font: 600 16px var(--serif); margin: 26px 0 8px; }
+  .danger-link { background: none; border: 0; padding: 0; font: inherit; color: var(--out);
+    text-decoration: underline; cursor: pointer; }
+</style>
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>eBay account</h1>
+    <p>Connect the store's eBay seller account to bring in its listings and orders.
+       Read-only: nothing on eBay is changed.</p>
+  </div>
+  <div class="head-actions"><span class="env-tag" id="env-tag" hidden></span></div>
+</header>
+
+<main>
+  <div class="msg" id="msg" aria-live="polite"></div>
+
+  <section id="setup" class="setup" hidden>
+    <h2>Set up the connection</h2>
+    <p>These settings are missing from <code>backend/.env</code>: <strong id="missing"></strong>.</p>
+    <ol class="steps">
+      <li>At developer.ebay.com, open Application Keys and create a keyset. Start with
+          <strong>Sandbox</strong>, eBay's test environment; switch to Production once the store
+          owner agrees to connect the real account.</li>
+      <li>Copy the keyset's App ID into <code>EBAY_CLIENT_ID</code> and its Cert ID into
+          <code>EBAY_CLIENT_SECRET</code>, and set <code>EBAY_ENVIRONMENT=sandbox</code>.</li>
+      <li>On the keyset's User Tokens page, choose "Get a Token from eBay via Your Application"
+          and add an eBay Redirect URL. Keep eBay's own confirmation page as the auth accepted URL
+          (eBay only accepts HTTPS addresses, not localhost), turn on OAuth, and save. Copy the
+          RuName it creates into <code>EBAY_RUNAME</code>.</li>
+      <li>Restart the server (Ctrl+C, then <code>python app.py</code>) and reload this page.</li>
+    </ol>
+    <p class="hint">To sign in to Sandbox you need a Sandbox test user, which you can create on the
+      developer site's Sandbox user registration page. Sandbox accounts start with no listings or orders.</p>
+  </section>
+
+  <section id="connect" hidden>
+    <h2>Connect the account</h2>
+    <p>The account owner signs in on eBay and clicks Agree. Nobody shares a password, and the owner
+       can withdraw access at any time.</p>
+    <ol class="steps">
+      <li>
+        <div class="inline-actions">
+          <button class="primary" id="open-btn" type="button">Open eBay to sign in</button>
+          <button class="quiet" id="copy-btn" type="button">Copy the link for the account owner</button>
+        </div>
+        <div class="hint" id="link-note" aria-live="polite"></div>
+      </li>
+      <li>After clicking Agree, eBay shows a confirmation page. Copy the whole address from the
+          browser's address bar.</li>
+      <li>Paste it here within 5 minutes; the code in it works once.
+        <div class="entry import-entry paste">
+          <div>
+            <label for="address">Address of eBay's confirmation page</label>
+            <input id="address" type="text" autocomplete="off" spellcheck="false" placeholder="https://signin.ebay.com/...">
+          </div>
+          <div><button class="primary" id="finish-btn" type="button">Finish connecting</button></div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="connected" hidden>
+    <div class="source-panel" id="account-line"></div>
+    <div class="cols" style="margin-top: 30px">
+      <div>
+        <h2>Listings</h2>
+        <p>Brings in each active listing's quantity and price by SKU. They appear on the Listings
+           page and are checked against your stock.</p>
+        <label class="check-field"><input type="checkbox" id="add-missing">
+          Also add listings that aren't in the catalog yet</label>
+        <div class="button-row"><button class="primary" id="sync-btn" type="button">Sync listings</button></div>
+        <p class="hint" id="sync-when"></p>
+      </div>
+      <div>
+        <h2>Orders</h2>
+        <p>Records paid eBay orders as sales in the inventory ledger. Orders already imported are
+           skipped, so running it again is safe.</p>
+        <label for="days" class="hint" style="display:block; margin: 0 0 6px">Orders from</label>
+        <select id="days">
+          <option value="30">The last 30 days</option>
+          <option value="90">The last 90 days</option>
+          <option value="730">The last 2 years</option>
+        </select>
+        <div class="button-row"><button class="primary" id="import-btn" type="button">Import orders</button></div>
+        <p class="hint" id="import-when"></p>
+      </div>
+    </div>
+    <div id="result" hidden></div>
+    <p class="hint" style="margin-top: 38px">
+      <button class="danger-link" id="disconnect-btn" type="button">Disconnect</button> removes the
+      saved authorization from this app; sales already imported stay in the ledger. To withdraw it on
+      eBay's side too, the owner removes the app in their eBay account settings.</p>
+  </section>
+
+  <section>
+    <h2>What's read, and what isn't</h2>
+    <p style="max-width: 72ch">Listings: SKU, title, price and quantity available. Orders: order number,
+      date, SKU, quantity, price and eBay's fees. Buyer names and addresses aren't stored, and nothing
+      on eBay is changed.</p>
+  </section>
+</main>
+
+<script src="/static/ops.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+
+function note(text, kind = "") {
+  $("msg").className = "msg" + (kind ? " " + kind : "");
+  $("msg").textContent = text;
+}
+
+async function post(path, body = {}) {
+  const res = await fetch(`${API}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Something went wrong. Try again.");
+  return data;
+}
+
+function show(section) {
+  for (const id of ["setup", "connect", "connected"]) $(id).hidden = id !== section;
+}
+
+function render(s) {
+  const tag = $("env-tag");
+  tag.hidden = false;
+  tag.className = `env-tag ${s.environment}`;
+  tag.textContent = s.environment === "sandbox" ? "Sandbox (test)" : "Production";
+  if (s.missing_settings.length) {
+    $("missing").textContent = s.missing_settings.join(", ");
+    return show("setup");
+  }
+  if (!s.connected) return show("connect");
+  $("account-line").innerHTML =
+    `Connected to eBay${s.environment === "sandbox" ? " Sandbox" : ""} as ` +
+    `<strong>${esc(s.username || "an account whose name eBay didn't share")}</strong> since ` +
+    `${esc(s.connected_at.slice(0, 10))}. The authorization lasts until ${esc(s.access_until)}.`;
+  $("sync-when").textContent = s.last_listing_sync ? `Last synced ${s.last_listing_sync.slice(0, 16)}.` : "Not synced yet.";
+  $("import-when").textContent = s.last_order_import ? `Last imported ${s.last_order_import.slice(0, 16)}.` : "No orders imported yet.";
+  show("connected");
+}
+
+async function load() {
+  try {
+    const res = await fetch(`${API}/ebay/status`);
+    if (!res.ok) throw new Error();
+    render(await res.json());
+  } catch {
+    note("The page didn't load. Check that the server is running, then refresh.", "error");
+  }
+}
+
+// ---- Connecting ----
+
+$("open-btn").onclick = async () => {
+  // Open the tab inside the click so the browser doesn't block it, then send it to eBay.
+  const tab = window.open("", "_blank");
+  try {
+    const { url } = await post("/ebay/consent-link");
+    if (tab) {
+      tab.opener = null;
+      tab.location = url;
+      $("link-note").textContent = "eBay opened in a new tab. Come back here after you click Agree.";
+    } else {
+      location.href = url;
+    }
+  } catch (e) {
+    if (tab) tab.close();
+    note(e.message, "error");
+  }
+};
+
+$("copy-btn").onclick = async () => {
+  try {
+    const { url } = await post("/ebay/consent-link");
+    await navigator.clipboard.writeText(url);
+    $("link-note").textContent = "Link copied. It works for 30 minutes. The owner opens it, signs in, clicks Agree " +
+      "and sends you the address of the page they land on; paste it below within 5 minutes.";
+  } catch (e) {
+    note(e.message || "The link couldn't be copied. Use Open eBay to sign in instead.", "error");
+  }
+};
+
+$("finish-btn").onclick = async () => {
+  const address = $("address").value.trim();
+  if (!address) return note("Paste the address of eBay's confirmation page first.", "error");
+  $("finish-btn").disabled = true;
+  note("Connecting...");
+  try {
+    const s = await post("/ebay/complete", { address });
+    $("address").value = "";
+    note(`Connected${s.username ? ` as ${s.username}` : ""}. Sync the listings, then import orders.`, "ok");
+    render(s);
+  } catch (e) {
+    note(e.message, "error");
+  }
+  $("finish-btn").disabled = false;
+};
+
+// ---- Listings and orders ----
+
+async function run(button, working, action, renderResult) {
+  button.disabled = true;
+  note(working);
+  try {
+    const data = await action();
+    note("");
+    renderResult(data);
+    load();
+  } catch (e) {
+    note(e.message, "error");
+  }
+  button.disabled = false;
+}
+
+function table(headers, rows, numeric = []) {
+  const th = headers.map((h, i) => `<th${numeric.includes(i) ? ' class="num"' : ""}>${h}</th>`).join("");
+  const body = rows.map(r => `<tr>${r.map((c, i) => `<td${numeric.includes(i) ? ' class="num"' : ""}>${c}</td>`).join("")}</tr>`).join("");
+  return `<table class="data"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+const itemLink = r => `<a href="/admin/item?sku=${encodeURIComponent(r.sku)}">${esc(r.title || r.sku)}</a>`;
+
+function showResult(html) {
+  $("result").innerHTML = html;
+  $("result").hidden = false;
+  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderSync(d) {
+  let html = `<h2>Listings synced</h2><p>Read ${num(d.listings)} active listings (${num(d.skus)} SKUs); ` +
+    `the Listings page now shows them.${d.added.length ? ` Added ${num(d.added.length)} to the catalog.` : ""}</p>`;
+  if (d.not_in_catalog_count) {
+    html += `<p>${num(d.not_in_catalog_count)} SKUs aren't in the catalog yet. Tick "Also add listings that aren't in ` +
+      `the catalog yet" and sync again to add them.</p>` +
+      table(["SKU", "Title", "Available on eBay"],
+            d.not_in_catalog.map(r => [esc(r.sku), esc(r.title), num(r.quantity_available)]), [2]);
+  }
+  showResult(html);
+}
+
+function renderImport(d) {
+  const skippedOrders = d.skipped_orders.canceled + d.skipped_orders.not_paid;
+  const more = (shown, total) => total > shown ? `<p class="hint">Showing ${num(shown)} of ${num(total)}.</p>` : "";
+  let html = `<h2>Orders imported</h2><p>Read ${num(d.orders)} orders and recorded ${num(d.recorded_count)} ` +
+    `${d.recorded_count === 1 ? "sale" : "sales"} (${num(d.recorded_units)} units).` +
+    (d.already_imported ? ` ${num(d.already_imported)} ${d.already_imported === 1 ? "was" : "were"} already imported.` : "") +
+    (skippedOrders ? ` Skipped ${num(skippedOrders)} canceled or unpaid ${skippedOrders === 1 ? "order" : "orders"}.` : "") + `</p>`;
+  if (d.recorded.length) {
+    html += table(["Date", "Item", "Sold", "Price", "eBay fee", "Order"],
+      d.recorded.map(r => [esc(r.date), itemLink(r), num(r.quantity), money(r.unit_price), money(r.fee), esc(r.order_id)]), [2, 3, 4])
+      + more(d.recorded.length, d.recorded_count);
+  }
+  if (d.not_in_catalog.length) {
+    html += `<h3>Not in the catalog</h3><p>${num(d.not_in_catalog_count)} order lines are for ${num(d.not_in_catalog.length)}` +
+      `${d.not_in_catalog.length >= 50 ? "+" : ""} SKUs the catalog doesn't have. Sync listings with "Also add listings that ` +
+      `aren't in the catalog yet" ticked, then import again.</p>` +
+      table(["SKU", "Title", "Lines", "Units sold", "Last sold"],
+            d.not_in_catalog.map(r => [esc(r.sku), esc(r.title), num(r.lines), num(r.quantity), esc(r.date)]), [2, 3]);
+  }
+  if (d.not_enough_stock.length) {
+    html += `<h3>Not enough stock recorded</h3><p>${num(d.not_enough_stock_count)} order lines sold more than the ledger ` +
+      `shows in stock at the time. Record the stock received on each item's page, then import again.</p>` +
+      table(["Date", "Item", "Sold", "In stock then"],
+            d.not_enough_stock.map(r => [esc(r.date), itemLink(r), num(r.quantity), num(r.available)]), [2, 3])
+      + more(d.not_enough_stock.length, d.not_enough_stock_count);
+  }
+  showResult(html);
+}
+
+// Imports one 30-day window at a time, oldest first (so earlier sales use
+// up stock before later ones), and adds the results together.
+async function importOrders() {
+  const days = Number($("days").value);
+  const windows = [];
+  for (let start = days; start > 0; start -= 30) windows.push([start, Math.max(start - 30, 0)]);
+  const total = { orders: 0, recorded: [], recorded_count: 0, recorded_units: 0, already_imported: 0,
+                  not_in_catalog: [], not_in_catalog_count: 0, not_enough_stock: [], not_enough_stock_count: 0,
+                  skipped_orders: { canceled: 0, not_paid: 0 } };
+  const missing = new Map();
+  for (const [i, [from, until]] of windows.entries()) {
+    note(windows.length > 1 ? `Reading orders from eBay: month ${i + 1} of ${windows.length}...` : "Reading orders from eBay...");
+    const d = await post("/ebay/import-orders", { days: from, until_days: until });
+    for (const key of ["orders", "recorded_count", "recorded_units", "already_imported", "not_in_catalog_count", "not_enough_stock_count"]) {
+      total[key] += d[key];
+    }
+    total.skipped_orders.canceled += d.skipped_orders.canceled;
+    total.skipped_orders.not_paid += d.skipped_orders.not_paid;
+    total.recorded.push(...d.recorded.slice(0, 50 - total.recorded.length));
+    total.not_enough_stock.push(...d.not_enough_stock.slice(0, 50 - total.not_enough_stock.length));
+    for (const m of d.not_in_catalog) {
+      const seen = missing.get(m.sku);
+      if (seen) { seen.lines += m.lines; seen.quantity += m.quantity; seen.date = m.date; }
+      else missing.set(m.sku, { ...m });
+    }
+  }
+  total.not_in_catalog = [...missing.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 50);
+  return total;
+}
+
+$("sync-btn").onclick = () => run($("sync-btn"), "Reading listings from eBay...",
+  () => post("/ebay/sync-listings", { add_missing: $("add-missing").checked }), renderSync);
+$("import-btn").onclick = () => run($("import-btn"), "Reading orders from eBay...", importOrders, renderImport);
+
+$("disconnect-btn").onclick = async () => {
+  if (!confirm("Disconnect the eBay account from this app? Sales already imported stay in the ledger.")) return;
+  try {
+    render(await post("/ebay/disconnect"));
+    $("result").hidden = true;
+    note("Disconnected.", "ok");
+  } catch (e) {
+    note(e.message, "error");
+  }
+};
+
+load();
+</script>
+</body>
+</html>

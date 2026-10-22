@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Inventory — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>Inventory</h1>
+    <p>Stock, sales, profit and turnover for every item, across Amazon, eBay and your own site. Select an item to see its full history.</p>
+  </div>
+  <div class="head-actions">
+    <a class="button-link" href="/admin/add">Add product</a>
+    <div class="period-toggle" id="period-toggle" role="group" aria-label="Reporting period">
+      <button data-period="30">Last 30 days</button>
+      <button data-period="90">Last 90 days</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="strip" id="summary" aria-live="polite"></div>
+
+  <section>
+    <div class="list-tools">
+      <input id="search" type="search" placeholder="Search by name or SKU" aria-label="Search items" autocomplete="off">
+      <div class="chips" id="filters" role="group" aria-label="Show items"></div>
+    </div>
+    <h2 id="table-title">Items</h2>
+    <table class="data">
+      <thead><tr id="head-row"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="pager" id="pager"></div>
+    <div class="msg" id="msg"></div>
+    <p class="hint">
+      Stock value uses each item's weighted-average cost. Turnover per year is
+      cost of goods sold divided by average stock value, scaled to 12 months.
+      Days left divides stock on hand by the recent daily sales pace. Items that
+      ran out of stock show very high turnover, because their average stock value
+      was near zero.
+    </p>
+  </section>
+</main>
+
+<script src="/static/ops.js"></script>
+<script>
+const COLUMNS = [
+  { key: "title", label: "Item" },
+  { key: "on_hand", label: "On hand", num: true },
+  { key: "inventory_value", label: "Stock value", num: true },
+  { key: "units_sold", label: "Sold", num: true },
+  { key: "revenue", label: "Revenue", num: true },
+  { key: "net_margin_pct", label: "Net margin", num: true },
+  { key: "turnover_annualized", label: "Turnover per year", num: true },
+  { key: "days_of_stock_left", label: "Days left", num: true },
+  { key: "status", label: "Status" },
+];
+const FILTERS = [
+  { key: "", label: "All" },
+  { key: "attention", label: "Needs attention" },
+  { key: "out_of_stock", label: "Out of stock" },
+  { key: "low", label: "Low stock" },
+  { key: "overstock", label: "Overstock" },
+  { key: "no_sales", label: "No recent sales" },
+  { key: "new", label: "Not stocked yet" },
+];
+const PER_PAGE = 50;
+
+// The list's state lives in the address bar, so links into a filtered
+// view work and the Back button returns to the same page of results.
+const params = new URLSearchParams(location.search);
+const state = {
+  period: readPeriod(),
+  q: params.get("q") || "",
+  status: params.get("status") || "",
+  sort: params.get("sort") || "inventory_value",
+  dir: params.get("dir") || "desc",
+  page: Number(params.get("page")) || 1,
+};
+let request = 0;
+
+function saveState() {
+  const p = new URLSearchParams({ period: state.period });
+  if (state.q) p.set("q", state.q);
+  if (state.status) p.set("status", state.status);
+  if (state.sort !== "inventory_value" || state.dir !== "desc") { p.set("sort", state.sort); p.set("dir", state.dir); }
+  if (state.page > 1) p.set("page", state.page);
+  history.replaceState(null, "", `?${p}`);
+}
+
+function renderHead() {
+  document.getElementById("head-row").innerHTML = COLUMNS.map(c => {
+    const sorted = c.key === state.sort;
+    const arrow = sorted ? (state.dir === "desc" ? " ↓" : " ↑") : "";
+    const aria = sorted ? (state.dir === "desc" ? "descending" : "ascending") : "none";
+    return `<th class="sortable${c.num ? " num" : ""}${sorted ? " sorted" : ""}" data-key="${c.key}"
+              tabindex="0" aria-sort="${aria}">${c.label}${arrow}</th>`;
+  }).join("");
+  document.querySelectorAll("#head-row th").forEach(th => {
+    const sortBy = () => {
+      const key = th.dataset.key;
+      if (key === state.sort) state.dir = state.dir === "desc" ? "asc" : "desc";
+      else { state.sort = key; state.dir = key === "title" ? "asc" : "desc"; }
+      state.page = 1;
+      load();
+    };
+    th.onclick = sortBy;
+    th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(); } };
+  });
+}
+
+function renderFilters(counts, total) {
+  const attention = (counts.out_of_stock || 0) + (counts.low || 0) + (counts.overstock || 0);
+  const countFor = key => key === "" ? total : key === "attention" ? attention : (counts[key] || 0);
+  document.getElementById("filters").innerHTML = FILTERS
+    .filter(f => f.key === "" || f.key === state.status || countFor(f.key) > 0)
+    .map(f => `<button type="button" data-status="${f.key}" class="${f.key === state.status ? "active" : ""}"
+                 aria-pressed="${f.key === state.status}">${f.label} <span class="n">${num(countFor(f.key))}</span></button>`)
+    .join("");
+  document.querySelectorAll("#filters button").forEach(b => {
+    b.onclick = () => { state.status = b.dataset.status; state.page = 1; load(); };
+  });
+}
+
+function renderRows(items) {
+  const body = document.getElementById("rows");
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">${
+      state.q || state.status ? "No items match. Try a different search or filter."
+                              : "No items yet. Add products to start tracking stock."}</td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map(it => `
+    <tr class="link" tabindex="0" data-sku="${esc(it.sku)}">
+      <td><div class="item-cell">${tile(it.sku, it.image)}
+        <div><div class="name">${esc(it.title)}</div><div class="code">${esc(it.sku)}</div></div></div></td>
+      <td class="num">${num(it.on_hand)}</td>
+      <td class="num">${money(it.inventory_value)}</td>
+      <td class="num">${num(it.units_sold)}</td>
+      <td class="num">${money(it.revenue)}</td>
+      <td class="num${it.net_margin_pct < 0 ? " minus" : ""}">${pct(it.net_margin_pct)}</td>
+      <td class="num">${times(it.turnover_annualized)}</td>
+      <td class="num">${num(it.days_of_stock_left)}</td>
+      <td>${statusTag(it.status)}</td>
+    </tr>`).join("");
+  body.querySelectorAll("tr.link").forEach(tr => {
+    const open = () => { location.href = `/admin/item?sku=${encodeURIComponent(tr.dataset.sku)}&period=${state.period}`; };
+    tr.onclick = open;
+    tr.onkeydown = e => { if (e.key === "Enter") open(); };
+  });
+}
+
+function renderPager(d) {
+  const first = d.total ? (d.page - 1) * d.per_page + 1 : 0;
+  const last = Math.min(d.page * d.per_page, d.total);
+  document.getElementById("pager").innerHTML = d.pages > 1 ? `
+    <button class="secondary" type="button" id="prev" ${d.page <= 1 ? "disabled" : ""}>Previous</button>
+    <span>${num(first)}–${num(last)} of ${num(d.total)}</span>
+    <button class="secondary" type="button" id="next" ${d.page >= d.pages ? "disabled" : ""}>Next</button>` : "";
+  const go = page => { state.page = page; load(); window.scrollTo({ top: document.getElementById("table-title").offsetTop - 70 }); };
+  if (d.pages > 1) {
+    document.getElementById("prev").onclick = () => go(d.page - 1);
+    document.getElementById("next").onclick = () => go(d.page + 1);
+  }
+}
+
+function renderSummary(s) {
+  const counts = s.status_counts || {};
+  const attention = (counts.low || 0) + (counts.out_of_stock || 0);
+  document.getElementById("summary").innerHTML = `
+    <div><div class="fig">${money(s.inventory_value)}</div><div class="cap">Stock value at cost, ${num(s.stock_units)} units</div></div>
+    <div><div class="fig">${money(s.revenue)}</div><div class="cap">Revenue, last ${state.period} days</div></div>
+    <div><div class="fig${s.net_profit < 0 ? " minus" : ""}">${money(s.net_profit)}</div>
+         <div class="cap">Net profit after fees (${pct(s.net_margin_pct)} margin)</div></div>
+    <div><div class="fig">${times(s.turnover_annualized)}</div><div class="cap">Turnover per year, all items</div></div>
+    <div><div class="fig${attention ? " minus" : ""}">${num(attention)}</div>
+         <div class="cap">of ${num(s.sku_count)} items low or out of stock</div></div>`;
+}
+
+async function load() {
+  const msg = document.getElementById("msg");
+  const mine = ++request;   // ignore answers to searches the person has already typed past
+  saveState();
+  renderHead();
+  const query = new URLSearchParams({ period: state.period, q: state.q, status: state.status,
+                                      sort: state.sort, dir: state.dir, page: state.page, per_page: PER_PAGE });
+  try {
+    const res = await fetch(`${API}/inventory?${query}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (mine !== request) return;
+    state.page = data.page;
+    renderSummary(data.summary);
+    renderFilters(data.summary.status_counts || {}, data.summary.sku_count);
+    const filter = FILTERS.find(f => f.key === state.status);
+    document.getElementById("table-title").textContent =
+      (state.status && filter ? `${filter.label}: ` : "") +
+      `${num(data.total)} ${data.total === 1 ? "item" : "items"}` +
+      (state.q ? ` matching “${state.q}”` : "") + `, last ${state.period} days`;
+    renderRows(data.items);
+    renderPager(data);
+    msg.textContent = "";
+  } catch {
+    if (mine !== request) return;
+    msg.className = "msg error";
+    msg.textContent = "Inventory didn't load. Check that the server is running, then refresh.";
+  }
+}
+
+const search = document.getElementById("search");
+search.value = state.q;
+let typing;
+search.oninput = () => {
+  clearTimeout(typing);
+  typing = setTimeout(() => { state.q = search.value.trim(); state.page = 1; load(); }, 250);
+};
+
+setupPeriodToggle(state.period, p => { state.period = p; state.page = 1; load(); });
+load();
+</script>
+</body>
+</html>

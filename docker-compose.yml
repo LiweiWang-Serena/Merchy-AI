@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: merchy
+      POSTGRES_PASSWORD: merchy
+      POSTGRES_DB: channel_ledger
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U merchy -d channel_ledger"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://merchy:merchy@db:5432/channel_ledger
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5050:5050"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

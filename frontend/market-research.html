@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Research — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f6f6f4; --panel-border: #d9d9d6;
+    --ink: #000000; --ink-dim: #5c5c5c;
+    --brass: #8c6418; --brass-dim: #cbb88f;
+    --red: #b3261e; --green: #1b7f4b;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; line-height:1.55; }
+  header {
+    padding: 34px 40px 26px; padding-inline: max(40px, calc((100% - 1100px) / 2)); border-bottom: 1px solid var(--panel-border);
+    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;
+  }
+  header h1 { font-family:'Source Serif 4',serif; font-size:26px; font-weight:600; margin:0 0 4px; }
+  header p { margin:0; color:var(--ink-dim); font-size:14px; }
+  header a.back-link { color:var(--brass); text-decoration:none; font-size:13px; font-family:'IBM Plex Mono',monospace; }
+
+  main { max-width: 1180px; margin:0 auto; padding:32px 40px 80px; }
+
+  .notice {
+    background: rgba(195,154,92,0.08); border:1px solid var(--brass-dim); border-radius:4px;
+    padding:14px 18px; font-size:13px; color:var(--ink-dim); margin-bottom:30px; line-height:1.6;
+  }
+  .notice strong { color: var(--brass); }
+
+  select, input[type=text], input[type=number] {
+    background: var(--panel); border:1px solid var(--panel-border); color:var(--ink);
+    padding:11px 13px; border-radius:3px; font-family:'IBM Plex Mono',monospace; font-size:13px;
+  }
+  select:focus, input:focus { outline:none; border-color:var(--brass); }
+
+  button {
+    background: var(--ink); color:#ffffff; border:none; padding:11px 22px;
+    font-family:'Inter',sans-serif; font-weight:600; font-size:14px; border-radius:3px; cursor:pointer;
+  }
+  button:hover { background:#2b2b2b; }
+  button:disabled { background:var(--brass-dim); cursor:wait; }
+
+  .section-head {
+    font-family:'Source Serif 4',serif; font-size:18px; font-weight:600;
+    border-bottom:1px solid var(--panel-border); padding-bottom:8px; margin: 34px 0 16px;
+  }
+  .section-head:first-of-type { margin-top: 0; }
+
+  .stat-row { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; margin-bottom: 10px; }
+  .stat { background:var(--panel); border:1px solid var(--panel-border); border-radius:4px; padding:16px; }
+  .stat .num { font-family:'Source Serif 4',serif; font-size:24px; font-weight:600; }
+  .stat .label { font-size:11.5px; color:var(--ink-dim); margin-top:4px; }
+
+  .keyword-bar-row { display:flex; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; }
+  .keyword-bar-row .kw-label { width:180px; flex-shrink:0; }
+  .keyword-bar-row .bar-track { flex:1; background:#10131a; border-radius:3px; height:16px; overflow:hidden; }
+  .keyword-bar-row .bar-fill { background: var(--brass); height:100%; }
+  .keyword-bar-row .bar-fill.underused { background: var(--green); }
+  .keyword-bar-row .pct { width:40px; text-align:right; font-family:'IBM Plex Mono',monospace; color:var(--ink-dim); }
+
+  .recommendation {
+    background: var(--panel); border-left:3px solid var(--brass); border-radius:3px;
+    padding:14px 16px; font-size:13.5px; margin-top:16px;
+  }
+
+  .form-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom: 16px; }
+  .field label { display:block; font-size:11.5px; color:var(--ink-dim); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px; }
+  .field input { width:100%; }
+  .bullets-input textarea {
+    width:100%; background:var(--panel); border:1px solid var(--panel-border); color:var(--ink);
+    padding:11px 13px; border-radius:3px; font-family:'Inter',sans-serif; font-size:13.5px; min-height:80px;
+  }
+
+  .generated-box {
+    background:var(--panel); border:1px solid var(--panel-border); border-radius:5px; padding:22px 24px; margin-top:20px;
+  }
+  .generated-title { font-family:'Source Serif 4',serif; font-size:19px; font-weight:600; margin:0 0 4px; }
+  .char-count { font-size:11px; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace; margin-bottom:16px; }
+  .desc-preview ul { padding-left:20px; }
+  .desc-preview li { margin-bottom:5px; }
+  .theme-tags { margin-top:14px; }
+  .theme-tag {
+    display:inline-block; background:rgba(195,154,92,0.15); color:var(--brass);
+    font-size:11px; font-family:'IBM Plex Mono',monospace; padding:3px 9px; border-radius:10px; margin-right:6px;
+  }
+
+  #status { font-size:12.5px; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace; margin-top:10px; }
+  #status.error { color: var(--red); }
+</style>
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header>
+  <div>
+    <h1>Market research and listing assistant</h1>
+    <p>See what's working across top sellers in your category, then generate original copy for your own product</p>
+  </div>
+</header>
+
+<main>
+  <div class="notice">
+    <strong>How this works:</strong> this analyzes structured facts about
+    top-selling listings in a category — price, rating, review count, and
+    how often certain themes appear — not the actual text or photos from
+    any specific listing. The content generator below writes original
+    copy based on those patterns plus your own product's facts; it never
+    copies another seller's wording or images.
+  </div>
+
+  <div class="section-head">1. Pick a category</div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <select id="niche-select"></select>
+    <button onclick="loadInsights()">Analyze top sellers</button>
+  </div>
+  <div id="status"></div>
+
+  <div id="insights-section" style="display:none;">
+    <div class="section-head">Category snapshot</div>
+    <div class="stat-row" id="stat-row"></div>
+
+    <div style="margin-top:24px;">
+      <div style="font-size:12px; color:var(--ink-dim); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.3px;">
+        Themes emphasized by top sellers &nbsp;<span style="color:var(--green);">■ underused opportunity</span>
+      </div>
+      <div id="keyword-bars"></div>
+    </div>
+
+    <div class="recommendation" id="recommendation"></div>
+
+    <div class="section-head">2. Enter your product's facts</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Product name</label>
+        <input type="text" id="p-name" placeholder="212cc Carburetor for Predator Engine">
+      </div>
+      <div class="field">
+        <label>Fit / compatibility note</label>
+        <input type="text" id="p-fit" placeholder="Fits 6.5HP OHV Go Kart Engines">
+      </div>
+      <div class="field">
+        <label>Your price ($)</label>
+        <input type="number" id="p-price" placeholder="24.95" step="0.01">
+      </div>
+    </div>
+    <div class="field bullets-input" style="margin-bottom:20px;">
+      <label>Your own product facts (one per line)</label>
+      <textarea id="p-bullets" placeholder="Includes gasket and mounting hardware&#10;OEM-comparable fitment"></textarea>
+    </div>
+    <button onclick="generateContent()" id="generate-btn">Generate original listing copy</button>
+
+    <div id="generated-result" style="display:none;"></div>
+  </div>
+</main>
+
+<script>
+const API = "/api";
+let currentInsights = null;
+
+async function loadNiches() {
+  const res = await fetch(API + "/market-research/niches");
+  const niches = await res.json();
+  document.getElementById('niche-select').innerHTML =
+    niches.map(n => `<option value="${n}">${n.replace(/-/g, ' ')}</option>`).join('');
+}
+
+async function loadInsights() {
+  const niche = document.getElementById('niche-select').value;
+  const status = document.getElementById('status');
+  status.className = ''; status.textContent = 'Analyzing top 50 listings...';
+
+  const res = await fetch(API + "/market-research/" + niche);
+  if (!res.ok) { status.className = 'error'; status.textContent = 'Analysis failed.'; return; }
+  currentInsights = await res.json();
+  status.textContent = `Analyzed ${currentInsights.sample_size} top-selling listings in "${niche.replace(/-/g,' ')}".`;
+
+  renderInsights(currentInsights);
+  document.getElementById('insights-section').style.display = 'block';
+}
+
+function renderInsights(d) {
+  document.getElementById('stat-row').innerHTML = `
+    <div class="stat"><div class="num">$${d.price.median.toFixed(2)}</div><div class="label">Median price</div></div>
+    <div class="stat"><div class="num">$${d.price.min.toFixed(2)}–$${d.price.max.toFixed(2)}</div><div class="label">Price range</div></div>
+    <div class="stat"><div class="num">${d.rating.average}★</div><div class="label">Avg rating (top sellers)</div></div>
+    <div class="stat"><div class="num">${d.rating.min_to_compete}★</div><div class="label">Min rating to compete</div></div>
+  `;
+
+  const underusedSet = new Set(d.underused_keywords.map(k => k.keyword));
+  const maxPct = Math.max(...d.top_keywords.map(k => k.pct_of_top_listings));
+  document.getElementById('keyword-bars').innerHTML = d.top_keywords.map(k => `
+    <div class="keyword-bar-row">
+      <div class="kw-label">${k.keyword}</div>
+      <div class="bar-track"><div class="bar-fill ${underusedSet.has(k.keyword) ? 'underused' : ''}" style="width:${(k.pct_of_top_listings/maxPct*100).toFixed(0)}%"></div></div>
+      <div class="pct">${k.pct_of_top_listings}%</div>
+    </div>
+  `).join('');
+
+  document.getElementById('recommendation').textContent = d.recommendation;
+}
+
+async function generateContent() {
+  const status = document.getElementById('status');
+  const btn = document.getElementById('generate-btn');
+  const niche = document.getElementById('niche-select').value;
+
+  const name = document.getElementById('p-name').value.trim();
+  const fit = document.getElementById('p-fit').value.trim();
+  const price = parseFloat(document.getElementById('p-price').value);
+  const bullets = document.getElementById('p-bullets').value.split('\n').map(s => s.trim()).filter(Boolean);
+
+  if (!name || !fit || !price) {
+    status.className = 'error'; status.textContent = 'Fill in product name, fit note, and price first.';
+    return;
+  }
+
+  btn.disabled = true;
+  const res = await fetch(API + "/generate-content", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      niche,
+      product_facts: { name, fit_note: fit, price, own_bullets: bullets }
+    })
+  });
+  const data = await res.json();
+  btn.disabled = false;
+
+  if (!res.ok) { status.className = 'error'; status.textContent = data.error || 'Generation failed.'; return; }
+
+  const draft = data.draft;
+  const box = document.getElementById('generated-result');
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="generated-box">
+      <div class="generated-title">${draft.title}</div>
+      <div class="char-count">${draft.title.length} / 80 characters</div>
+      <div class="desc-preview">${draft.description_html}</div>
+      <div class="theme-tags">
+        ${draft.themes_used.map(t => `<span class="theme-tag">${t}</span>`).join('')}
+      </div>
+    </div>
+  `;
+  status.className = ''; status.textContent = 'Original listing copy generated from your facts + category insights.';
+}
+
+loadNiches();
+</script>
+
+</body>
+</html>

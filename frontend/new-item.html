@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Add a product — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>Add a product</h1>
+    <p>Paste a product link. Your own store's products import in full. From other sellers'
+       listings only the facts are read (what the part fits, part numbers, specs and price), and
+       your title and description are written fresh from them.</p>
+  </div>
+</header>
+
+<main>
+  <section style="margin-top: 0">
+    <h2>Product link</h2>
+    <div class="entry import-entry">
+      <div>
+        <label for="ref-url">Link from your store, eBay, Amazon or another Shopify store</label>
+        <input id="ref-url" type="url" inputmode="url" autocomplete="off" placeholder="https://">
+      </div>
+      <div><button class="primary" id="read-btn" type="button">Read link</button></div>
+    </div>
+    <div class="msg" id="read-msg" aria-live="polite"></div>
+    <div class="source-panel" id="source-panel" hidden></div>
+    <p class="hint">
+      Try a sample:
+      <button class="quiet" type="button" data-sample="https://www.ebay.com/itm/100000000001">eBay listing</button> or
+      <button class="quiet" type="button" data-sample="https://www.amazon.com/dp/B0DEMO0001">Amazon product</button>.
+      Or <button class="quiet" id="manual-btn" type="button">enter the facts by hand</button>.
+    </p>
+  </section>
+
+  <div class="builder" id="builder" hidden>
+    <div>
+      <h2>Facts</h2>
+      <p class="ref-note" id="ref-note"></p>
+
+      <div class="field">
+        <label for="f-part">What the part is</label>
+        <input id="f-part" type="text" maxlength="120" placeholder="Fuel tank">
+      </div>
+      <div class="field-pair">
+        <div class="field">
+          <label for="f-brands">Brands it fits</label>
+          <input id="f-brands" type="text" placeholder="Harbor Freight, Predator">
+        </div>
+        <div class="field">
+          <label for="f-equipment">Equipment</label>
+          <input id="f-equipment" type="text" placeholder="Earth Auger">
+        </div>
+      </div>
+      <div class="field-pair">
+        <div class="field">
+          <label for="f-engines">Engine sizes</label>
+          <input id="f-engines" type="text" placeholder="52cc">
+        </div>
+        <div class="field">
+          <label for="f-years">Years</label>
+          <input id="f-years" type="text" placeholder="2004-2005">
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-models">Model or item numbers</label>
+        <input id="f-models" type="text" placeholder="56257, 57341">
+        <p class="hint">Separate several with commas. Check these against the part itself: a wrong
+          number means a customer gets a part that doesn't fit.</p>
+      </div>
+      <div class="field">
+        <span class="label">Specifications</span>
+        <div id="specs"></div>
+        <button class="quiet" id="add-spec" type="button">Add a specification</button>
+      </div>
+      <label class="check-field">
+        <input type="checkbox" id="f-aftermarket" checked>
+        <span>Aftermarket part. Adds a note that it isn't made by or affiliated with the brands it
+          fits. Untick this for genuine brand parts.</span>
+      </label>
+
+      <h2>Your listing</h2>
+      <div class="field-pair">
+        <div class="field">
+          <label for="f-sku">Your SKU</label>
+          <input id="f-sku" type="text" maxlength="40" autocomplete="off" placeholder="FMP-TANK-52">
+        </div>
+        <div class="field">
+          <label for="f-price">Your price ($)</label>
+          <input id="f-price" type="number" min="0.01" step="0.01" inputmode="decimal">
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-photos">Your photo links, one per line</label>
+        <textarea id="f-photos" placeholder="https://"></textarea>
+        <p class="hint">Photos you took or have the rights to use. The reference listing's photos
+          are never imported.</p>
+      </div>
+      <div class="field">
+        <label for="f-notes">Extra notes for the description (optional)</label>
+        <textarea id="f-notes" maxlength="2000" placeholder="Ships from California within one business day."></textarea>
+      </div>
+    </div>
+
+    <aside class="preview" aria-label="Listing preview">
+      <div class="field">
+        <div class="title-row">
+          <label for="p-title">Title</label>
+          <span class="char-count" id="title-count" aria-live="polite"></span>
+        </div>
+        <input id="p-title" type="text" maxlength="120">
+      </div>
+      <button class="quiet" id="reset-title" type="button" hidden>Use the suggested title</button>
+      <div class="desc" id="p-desc"></div>
+      <div class="button-row">
+        <button class="secondary" id="copy-title" type="button">Copy title</button>
+        <button class="secondary" id="copy-html" type="button">Copy description (HTML)</button>
+        <button class="secondary" id="copy-text" type="button">Copy as plain text</button>
+      </div>
+      <div class="button-row">
+        <button class="primary" id="save-btn" type="button">Save to inventory</button>
+      </div>
+      <div class="msg" id="save-msg" aria-live="polite"></div>
+      <p class="hint">HTML suits Shopify and eBay; plain text suits TikTok Shop. Saving adds the item
+        with no stock, so open it afterwards to record the stock you receive.</p>
+    </aside>
+  </div>
+</main>
+
+<script src="/static/ops.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const state = { reference: null, draft: null, titleEdited: false, timer: null };
+const listFrom = text => text.split(",").map(s => s.trim()).filter(Boolean);
+
+function emptyFacts(reference = null) {
+  return {
+    part_name: "",
+    fits: { brands: [], engine_sizes: [], equipment: [], model_numbers: [], years: [] },
+    specs: [], aftermarket: true, reference,
+  };
+}
+
+function hostOf(url) {
+  try { return new URL(url).hostname; } catch { return null; }
+}
+
+function specRow(spec = { name: "", value: "" }) {
+  const row = document.createElement("div");
+  row.className = "spec-row";
+  row.innerHTML = `
+    <input type="text" class="spec-name" maxlength="40" placeholder="Material" aria-label="Specification name">
+    <input type="text" class="spec-value" maxlength="120" placeholder="Steel" aria-label="Specification value">
+    <button class="quiet" type="button">Remove</button>`;
+  row.querySelector(".spec-name").value = spec.name;   // set as values, never as HTML
+  row.querySelector(".spec-value").value = spec.value;
+  row.querySelectorAll("input").forEach(input => { input.oninput = () => schedulePreview(); });
+  row.querySelector("button").onclick = () => { row.remove(); schedulePreview(0); };
+  return row;
+}
+
+function showBuilder(facts, options = {}) {
+  state.reference = facts.reference || null;
+  $("f-part").value = facts.part_name || "";
+  $("f-brands").value = facts.fits.brands.join(", ");
+  $("f-equipment").value = facts.fits.equipment.join(", ");
+  $("f-engines").value = facts.fits.engine_sizes.join(", ");
+  $("f-years").value = facts.fits.years.join(", ");
+  $("f-models").value = facts.fits.model_numbers.join(", ");
+  $("f-aftermarket").checked = facts.aftermarket !== false;
+  $("specs").innerHTML = "";
+  facts.specs.forEach(spec => $("specs").appendChild(specRow(spec)));
+
+  const ref = state.reference;
+  const note = $("ref-note");
+  if (!ref || !ref.site) {
+    note.textContent = "Facts entered by hand, with no reference link.";
+  } else if (ref.price != null) {
+    note.innerHTML = `Reference: ${esc(ref.site)} sells it for <strong>${money(ref.price)}</strong>. ` +
+      "That price is saved with your item for comparison; nothing else from their listing is kept.";
+  } else if (options.auto) {
+    note.textContent = `Reference: ${ref.site}. The facts were read automatically; this source doesn't provide a price.`;
+  } else {
+    note.textContent = `Reference: ${ref.site}. Fill in the facts from that listing yourself.`;
+  }
+
+  state.titleEdited = false;
+  $("reset-title").hidden = true;
+  $("builder").hidden = false;
+  schedulePreview(0);
+}
+
+function collectFacts() {
+  return {
+    part_name: $("f-part").value,
+    fits: {
+      brands: listFrom($("f-brands").value),
+      engine_sizes: listFrom($("f-engines").value),
+      equipment: listFrom($("f-equipment").value),
+      model_numbers: listFrom($("f-models").value),
+      years: listFrom($("f-years").value),
+    },
+    specs: [...document.querySelectorAll(".spec-row")].map(row => ({
+      name: row.querySelector(".spec-name").value,
+      value: row.querySelector(".spec-value").value,
+    })),
+    aftermarket: $("f-aftermarket").checked,
+    reference: state.reference,
+  };
+}
+
+function schedulePreview(delay = 300) {
+  clearTimeout(state.timer);
+  state.timer = setTimeout(updatePreview, delay);
+}
+
+async function updatePreview() {
+  try {
+    const res = await fetch(`${API}/new-item/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ facts: collectFacts(), extra_notes: $("f-notes").value }),
+    });
+    if (!res.ok) throw new Error();
+    state.draft = await res.json();
+    if (!state.titleEdited) $("p-title").value = state.draft.title;
+    $("p-desc").innerHTML = state.draft.description_html;  // written and escaped by the backend
+    updateTitleCount();
+  } catch {
+    $("save-msg").className = "msg error";
+    $("save-msg").textContent = "The preview didn't update. Check that the backend is running.";
+  }
+}
+
+function updateTitleCount() {
+  const length = $("p-title").value.trim().length;
+  $("title-count").textContent = `${length} / 80`;
+  $("title-count").classList.toggle("over", length > 80);
+}
+
+async function readReference() {
+  const url = $("ref-url").value.trim();
+  const msg = $("read-msg");
+  if (!url) {
+    msg.className = "msg error";
+    msg.textContent = "Paste a product link first.";
+    return;
+  }
+  $("read-btn").disabled = true;
+  hidePanel();
+  msg.className = "msg";
+  msg.textContent = "Reading the link...";
+  try {
+    const res = await fetch(`${API}/new-item/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showBuilder(data.facts, { auto: true });
+      renderSource(data.source, data.own_listing, url);
+      msg.className = "msg ok";
+      msg.textContent = `Read the facts from ${data.facts.reference.site}. Check them below; ` +
+        "the title and description update as you edit.";
+    } else if (res.status === 409 && data.own_store) {
+      $("builder").hidden = true;
+      msg.textContent = "";
+      renderOwnStore(url, data.error);
+    } else if (data.manual_entry) {
+      const site = hostOf(url);
+      showBuilder(emptyFacts(site ? { site, url, price: null } : null));
+      msg.className = "msg";
+      msg.textContent = data.error;
+    } else {
+      throw new Error(data.error || "The link wasn't read.");
+    }
+  } catch (e) {
+    msg.className = "msg error";
+    msg.textContent = e.message === "Failed to fetch"
+      ? "The backend isn't responding. Start it with `python app.py`, then try again."
+      : e.message;
+  } finally {
+    $("read-btn").disabled = false;
+  }
+}
+
+function hidePanel() {
+  $("source-panel").hidden = true;
+  $("source-panel").innerHTML = "";
+}
+
+function renderSource(source, ownListing, url) {
+  const panel = $("source-panel");
+  if (!source) return hidePanel();
+  let html = `Read from ${esc(source.platform)} through its API` +
+    (source.seller ? `, listing by ${esc(source.seller)}.` : ".");
+  if (source.demo) {
+    html += ` <strong>Demo data:</strong> the ${esc(source.platform)} API isn't connected yet, so this sample shows how it works.`;
+  }
+  if (ownListing) {
+    html += `<p style="margin: 10px 0 0">This is your own listing, so you can import it as it is, photos included,
+      instead of writing new copy.</p><div class="button-row"><button class="secondary" id="import-own" type="button">Import my listing as-is</button></div>`;
+  }
+  panel.innerHTML = html;
+  panel.hidden = false;
+  if (ownListing) $("import-own").onclick = () => importAndOpen("/new-item/import-own-ebay", url, $("import-own"));
+}
+
+function renderOwnStore(url, message) {
+  const panel = $("source-panel");
+  panel.innerHTML = `${esc(message)}<div class="button-row">
+    <button class="primary" id="import-store" type="button">Import with photos</button></div>`;
+  panel.hidden = false;
+  $("import-store").onclick = () => importAndOpen("/inventory/import", url, $("import-store"));
+}
+
+async function importAndOpen(endpoint, url, button) {
+  const msg = $("read-msg");
+  button.disabled = true;
+  try {
+    const res = await fetch(`${API}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "The product wasn't imported.");
+    const first = data.items[0];
+    msg.className = "msg ok";
+    msg.innerHTML = `${first.created ? "Imported" : "Updated"} ${esc(first.title)}. ` +
+      `<a href="/admin/item?sku=${encodeURIComponent(first.sku)}">Open it to record stock</a>.`;
+    hidePanel();
+  } catch (e) {
+    msg.className = "msg error";
+    msg.textContent = e.message;
+    button.disabled = false;
+  }
+}
+
+async function saveItem() {
+  const msg = $("save-msg");
+  const fail = text => { msg.className = "msg error"; msg.textContent = text; };
+  const payload = {
+    sku: $("f-sku").value.trim(),
+    title: $("p-title").value.trim(),
+    price: Number($("f-price").value),
+    facts: collectFacts(),
+    extra_notes: $("f-notes").value,
+    photo_urls: $("f-photos").value.split("\n").map(s => s.trim()).filter(Boolean),
+  };
+  if (!payload.sku) return fail("Add your SKU.");
+  if (!(payload.price > 0)) return fail("Enter your price.");
+  if (!payload.title) return fail("Add a title.");
+
+  $("save-btn").disabled = true;
+  try {
+    const res = await fetch(`${API}/new-item`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "The item wasn't saved.");
+    msg.className = "msg ok";
+    msg.innerHTML = `Saved as ${esc(data.sku)}. ` +
+      `<a href="/admin/item?sku=${encodeURIComponent(data.sku)}">Open it to record stock</a>.`;
+  } catch (e) {
+    fail(e.message === "Failed to fetch"
+      ? "The backend isn't responding. Start it with `python app.py`, then try again."
+      : e.message);
+  } finally {
+    $("save-btn").disabled = false;
+  }
+}
+
+async function copy(text, button) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+  const label = button.textContent;
+  button.textContent = "Copied";
+  setTimeout(() => { button.textContent = label; }, 1400);
+}
+
+$("read-btn").onclick = readReference;
+$("ref-url").onkeydown = e => { if (e.key === "Enter") readReference(); };
+document.querySelectorAll("[data-sample]").forEach(button => {
+  button.onclick = () => { $("ref-url").value = button.dataset.sample; readReference(); };
+});
+$("manual-btn").onclick = () => {
+  hidePanel();
+  $("read-msg").textContent = "";
+  showBuilder(emptyFacts(null));
+  $("f-part").focus();
+};
+["f-part", "f-brands", "f-equipment", "f-engines", "f-years", "f-models", "f-notes"].forEach(id => {
+  $(id).oninput = () => schedulePreview();
+});
+$("f-aftermarket").onchange = () => schedulePreview(0);
+$("add-spec").onclick = () => {
+  const row = specRow();
+  $("specs").appendChild(row);
+  row.querySelector(".spec-name").focus();
+};
+$("p-title").oninput = () => {
+  state.titleEdited = true;
+  $("reset-title").hidden = false;
+  updateTitleCount();
+};
+$("reset-title").onclick = () => {
+  state.titleEdited = false;
+  $("reset-title").hidden = true;
+  if (state.draft) $("p-title").value = state.draft.title;
+  updateTitleCount();
+};
+$("copy-title").onclick = e => copy($("p-title").value.trim(), e.currentTarget);
+$("copy-html").onclick = e => { if (state.draft) copy(state.draft.description_html, e.currentTarget); };
+$("copy-text").onclick = e => { if (state.draft) copy(state.draft.description_text, e.currentTarget); };
+$("save-btn").onclick = saveItem;
+</script>
+</body>
+</html>

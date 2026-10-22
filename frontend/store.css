@@ -1,0 +1,388 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
+
+:root {
+  --paper: #ffffff;
+  --paper-dim: #f3f3f1;
+  --ink: #000000;
+  --ink-dim: #5c5c5c;
+  --green: #000000;
+  --green-dim: #2b2b2b;
+  --brass: #8c6418;
+  --brass-light: #cbb88f;
+  --red: #b3261e;
+  --line: #dddddb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', sans-serif;
+  line-height: 1.55;
+}
+
+a { color: inherit; }
+
+/* ---- Site header ---- */
+.site-header {
+  background: var(--paper);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  padding: 0 max(40px, calc((100% - 1060px) / 2));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 68px;
+}
+.site-header .brand {
+  font-family: 'Source Serif 4', serif;
+  font-size: 21px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ink);
+  letter-spacing: 0.2px;
+}
+.site-header nav { display: flex; align-items: center; gap: 26px; }
+.site-header nav a {
+  text-decoration: none;
+  color: var(--ink);
+  font-size: 14px;
+  opacity: 0.88;
+}
+.site-header nav a:hover { opacity: 1; }
+.cart-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--ink);
+  color: #ffffff !important;
+  padding: 8px 14px;
+  border-radius: 3px;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+#cart-badge {
+  background: #ffffff;
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+main { max-width: 1140px; margin: 0 auto; padding: 40px 40px 80px; }
+
+/* ---- Product grid ---- */
+.page-title {
+  font-family: 'Source Serif 4', serif;
+  font-size: 30px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.page-subtitle { color: var(--ink-dim); font-size: 14.5px; margin: 0 0 34px; }
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+}
+.product-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  text-decoration: none;
+  color: var(--ink);
+  display: block;
+  transition: border-color 0.15s ease;
+}
+.product-card:hover { border-color: var(--brass); }
+.product-card .thumb {
+  aspect-ratio: 4/3;
+  background: var(--paper-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: center;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.product-card .info { padding: 14px 15px 16px; }
+.product-card .p-title {
+  font-family: 'Source Serif 4', serif;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  line-height: 1.3;
+}
+.product-card .p-brand { font-size: 12px; color: var(--ink-dim); margin-bottom: 8px; }
+.product-card .p-price {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  color: var(--green);
+  font-weight: 600;
+}
+.product-card .p-stock { font-size: 11px; color: var(--brass); margin-top: 4px; }
+
+/* ---- Product detail ---- */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 46px;
+}
+.detail-images .main-image {
+  aspect-ratio: 4/3;
+  background: var(--paper-dim);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 16px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.detail-images .thumb-row { display: flex; gap: 8px; }
+.detail-images .thumb-row div {
+  flex: 1;
+  aspect-ratio: 1;
+  background: var(--paper-dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 9px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--ink-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  text-align: center;
+}
+
+.detail-title {
+  font-family: 'Source Serif 4', serif;
+  font-size: 27px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.detail-brand { color: var(--ink-dim); font-size: 14px; margin-bottom: 16px; }
+.detail-price {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 26px;
+  color: var(--green);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.detail-stock { font-size: 13px; color: var(--brass); margin-bottom: 22px; }
+.detail-description { font-size: 14.5px; margin-bottom: 26px; }
+.detail-description ul { padding-left: 20px; }
+.detail-description li { margin-bottom: 5px; }
+
+.qty-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.qty-row label { font-size: 13px; color: var(--ink-dim); }
+.qty-row input {
+  width: 60px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  background: #ffffff;
+}
+
+button.primary {
+  background: var(--green);
+  color: var(--paper);
+  border: none;
+  padding: 13px 26px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14.5px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+button.primary:hover { background: var(--green-dim); }
+button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 13px 26px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14.5px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+button.secondary:hover { border-color: var(--brass); }
+
+/* ---- Cart page ---- */
+.cart-row {
+  display: grid;
+  grid-template-columns: 70px 1fr auto auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cart-row .thumb-sm {
+  width: 70px;
+  height: 55px;
+  background: var(--paper-dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.cart-row .title { font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 15px; }
+.cart-row input[type=number] {
+  width: 55px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: center;
+}
+.cart-row .line-total { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+.cart-row .remove-btn { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; text-decoration: underline; padding: 0; }
+
+.cart-summary {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 2px solid var(--ink);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 22px;
+}
+.cart-summary .total-label { font-size: 14px; color: var(--ink-dim); }
+.cart-summary .total-amount { font-family: 'Source Serif 4', serif; font-size: 26px; font-weight: 700; }
+
+.empty-state { padding: 60px 0; text-align: center; color: var(--ink-dim); }
+
+/* ---- Checkout ---- */
+.checkout-grid { display: grid; grid-template-columns: 1fr 380px; gap: 44px; }
+.checkout-panel {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 28px 30px;
+}
+.checkout-panel h2 { font-family: 'Source Serif 4', serif; font-size: 19px; margin-top: 0; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 12.5px; color: var(--ink-dim); margin-bottom: 6px; }
+.field input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  background: #ffffff;
+}
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+
+.test-card-hint {
+  background: var(--paper-dim);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+.test-card-hint code {
+  background: #ffffff;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.order-summary-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13.5px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.order-summary-total {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Source Serif 4', serif;
+  font-weight: 700;
+  font-size: 18px;
+  padding-top: 12px;
+  margin-top: 6px;
+}
+
+#payment-message { margin-top: 14px; font-size: 13.5px; }
+#payment-message.error { color: var(--red); }
+#payment-message.success { color: var(--green); }
+
+.confirmation {
+  text-align: center;
+  padding: 60px 20px;
+}
+.confirmation .check {
+  width: 56px; height: 56px;
+  background: var(--green);
+  color: var(--paper);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+  margin: 0 auto 20px;
+}
+
+@media (max-width: 900px) {
+  .product-grid { grid-template-columns: repeat(2, 1fr); }
+  .detail-grid, .checkout-grid { grid-template-columns: 1fr; }
+  main { padding: 28px 20px 60px; }
+  .site-header { padding: 0 20px; }
+}
+
+/* Real product photos (items imported from the store) */
+.product-card .thumb img,
+.detail-images .main-image img,
+.detail-images .thumb-row img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.product-card .thumb, .detail-images .main-image, .detail-images .thumb-row div { overflow: hidden; }
+
+/* ---- Home page sections and stock labels ---- */
+.section-title { font: 600 20px/1.3 'Source Serif 4', serif; margin: 36px 0 16px; }
+.page-subtitle + section .section-title { margin-top: 22px; }
+.p-stock.low { color: var(--brass); font-weight: 600; }
+.p-stock.out { color: var(--red); }
+.load-error { color: var(--red); }
+
+/* Stock and price on product cards: neutral for normal stock; color only when it matters. */
+.product-card .p-stock { color: var(--ink-dim); font-family: 'Inter', sans-serif; }
+.product-card .p-stock.low { color: var(--brass); font-weight: 600; }
+.product-card .p-stock.out { color: var(--red); }
+.product-card .p-price { font-family: 'Inter', sans-serif; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Search and paging for a large catalog. */
+.shop-tools { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: 12px 24px; margin: 36px 0 16px; }
+.shop-tools .section-title { margin: 0; }
+.shop-tools input[type="search"] { flex: 0 1 340px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 3px; font: 500 14px 'Inter', sans-serif; color: var(--ink); background: #fff; }
+.shop-tools input[type="search"]:focus { outline: none; border-color: var(--ink); }
+.shop-pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 28px;
+  font-size: 14px; color: var(--ink-dim); }
+.pager-btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 3px;
+  padding: 9px 16px; font: 500 14px 'Inter', sans-serif; cursor: pointer; }
+.pager-btn:disabled { opacity: 0.4; cursor: default; }
+.empty-results { grid-column: 1 / -1; color: var(--ink-dim); }

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SkuTrail Demo Store — Cart</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/store.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="/">SkuTrail Demo Store</a>
+  <nav>
+    <a href="/">Shop</a>
+    <a class="cart-link" href="/cart">Cart <span id="cart-badge">0</span></a>
+  </nav>
+</header>
+
+<main>
+  <h1 class="page-title">Your Cart</h1>
+  <div id="cart-content"></div>
+</main>
+
+<script src="/static/cart.js"></script>
+<script>
+function render() {
+  const cart = getCart();
+  const content = document.getElementById('cart-content');
+
+  if (!cart.length) {
+    content.innerHTML = `<div class="empty-state">
+      <p>Your cart is empty.</p>
+      <button class="primary" onclick="location.href='/'">Browse lots</button>
+    </div>`;
+    return;
+  }
+
+  const rows = cart.map(item => `
+    <div class="cart-row">
+      <div class="thumb-sm"></div>
+      <div class="title">${item.title}</div>
+      <input type="number" min="1" value="${item.quantity}"
+             onchange="updateQuantity('${item.sku}', parseInt(this.value)||1); render();">
+      <div class="line-total">$${(item.price * item.quantity).toFixed(2)}</div>
+      <button class="remove-btn" onclick="removeFromCart('${item.sku}'); render();">Remove</button>
+    </div>
+  `).join('');
+
+  content.innerHTML = `
+    ${rows}
+    <div class="cart-summary">
+      <span class="total-label">Total</span>
+      <span class="total-amount">$${cartTotal().toFixed(2)}</span>
+    </div>
+    <div style="margin-top:24px; display:flex; justify-content:flex-end; gap:12px;">
+      <button class="secondary" onclick="location.href='/'">Continue browsing</button>
+      <button class="primary" onclick="location.href='/checkout'">Proceed to checkout</button>
+    </div>
+  `;
+}
+
+render();
+</script>
+
+<script src="/static/support-widget.js"></script>
+</body>
+</html>

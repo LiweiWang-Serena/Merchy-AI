@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reports — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/ops.css">
+<style>
+  .lede { font-size: 15px; max-width: 70ch; margin: 0 0 18px; }
+  .bars { display: grid; grid-template-columns: 170px 1fr 110px; gap: 8px 14px; align-items: center; font-size: 13.5px; }
+  .bars .track { height: 10px; background: var(--row); border-radius: 2px; overflow: hidden; }
+  .bars .fill { height: 100%; background: var(--ink); }
+  .bars .val { text-align: right; font-family: var(--mono); font-size: 12.5px; }
+  .abc { font: 600 13px var(--sans); display: inline-block; width: 22px; height: 22px; line-height: 22px;
+         text-align: center; border-radius: 3px; border: 1px solid var(--rule); }
+  .abc.A { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .abc.B { background: #e9e9e6; }
+  .print-note { display: none; }
+  @media print {
+    .period-toggle, .head-actions button, .no-print { display: none !important; }
+    .print-note { display: block; color: var(--dim); font-size: 12px; }
+    section { break-inside: avoid; }
+    main { padding-top: 10px; }
+    .chart-box { height: 200px; }
+  }
+</style>
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header class="page-head">
+  <div>
+    <h1>Reports</h1>
+    <p id="subtitle">Sales, profit, purchasing and stock across every item.</p>
+    <p class="print-note" id="print-note"></p>
+  </div>
+  <div class="head-actions">
+    <div class="period-toggle" id="period-toggle" role="group" aria-label="Reporting period">
+      <button data-period="30">Last 30 days</button>
+      <button data-period="90">Last 90 days</button>
+    </div>
+    <button class="secondary" id="print-btn" type="button">Print or save as PDF</button>
+  </div>
+</header>
+
+<main>
+  <div class="msg" id="msg"></div>
+  <div id="content" hidden>
+    <div class="strip" id="summary"></div>
+
+    <section>
+      <h2>Sales and profit by week</h2>
+      <div class="chart-box"><canvas id="trend-chart" aria-label="Weekly revenue and net profit"></canvas></div>
+    </section>
+
+    <section class="cols">
+      <div>
+        <h2>Profit</h2>
+        <table class="statement" id="profit"></table>
+      </div>
+      <div>
+        <h2>By channel</h2>
+        <table class="data">
+          <thead><tr><th>Channel</th><th class="num">Units</th><th class="num">Revenue</th><th class="num">Share</th><th class="num">Net profit</th><th class="num">Margin</th></tr></thead>
+          <tbody id="channels"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Product analysis</h2>
+      <p class="lede" id="abc-lede"></p>
+      <table class="data">
+        <thead><tr><th>Class</th><th class="num">Items</th><th class="num">Share of revenue</th><th class="num">Share of stock value</th><th class="num">Stock value</th></tr></thead>
+        <tbody id="abc"></tbody>
+      </table>
+      <p class="hint">A items bring the first 80% of revenue, B the next 15%, C the rest. Keep A items
+        in stock first; C items holding a large share of stock value are candidates for smaller reorders or clearance.</p>
+      <p class="hint no-print" id="products-note" style="margin-top: 22px"></p>
+      <table class="data">
+        <thead><tr><th>Item</th><th>Class</th><th class="num">Sold</th><th class="num">Revenue</th><th class="num">Share</th>
+          <th class="num">Net profit</th><th class="num">Margin</th><th class="num">On hand</th><th class="num">Days left</th><th>Status</th></tr></thead>
+        <tbody id="products"></tbody>
+      </table>
+    </section>
+
+    <section class="cols">
+      <div>
+        <h2>Top sellers by units</h2>
+        <table class="data"><thead><tr><th>#</th><th>Item</th><th class="num">Sold</th><th class="num">Revenue</th></tr></thead>
+          <tbody id="top-units"></tbody></table>
+      </div>
+      <div>
+        <h2>Top sellers by profit</h2>
+        <table class="data"><thead><tr><th>#</th><th>Item</th><th class="num">Net profit</th><th class="num">Sold</th></tr></thead>
+          <tbody id="top-profit"></tbody></table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Purchasing</h2>
+      <p class="lede" id="spend-lede"></p>
+      <table class="data">
+        <thead><tr><th>Item</th><th class="num">Orders</th><th class="num">Units</th><th class="num">Spend</th>
+          <th class="num">Average cost</th><th class="num">Cost change</th><th>Last received</th></tr></thead>
+        <tbody id="purchases"></tbody>
+      </table>
+      <p class="hint" id="purchases-note"></p>
+      <h2 style="margin-top: 30px" id="reorders-title">Reorder plan</h2>
+      <table class="data">
+        <thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Days left</th><th class="num">Order</th>
+          <th class="num">Unit cost</th><th class="num">Estimated cost</th></tr></thead>
+        <tbody id="reorders"></tbody>
+      </table>
+      <p class="hint" id="reorders-note"></p>
+      <p class="hint">Quantities restore about 45 days of stock at each item's recent sales pace. Unit cost is the
+        current weighted-average cost; your supplier's price may differ.</p>
+    </section>
+
+    <section>
+      <h2>Inventory analysis</h2>
+      <div class="cols">
+        <div>
+          <h3 style="font: 600 16px var(--serif); margin: 0 0 12px">Stock by status</h3>
+          <table class="data">
+            <thead><tr><th>Status</th><th class="num">Items</th><th class="num">Units</th><th class="num">Value</th></tr></thead>
+            <tbody id="status"></tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font: 600 16px var(--serif); margin: 0 0 12px">How long current stock will last</h3>
+          <div class="bars" id="cover"></div>
+          <p class="hint">By stock value, at each item's recent sales pace.</p>
+        </div>
+      </div>
+      <div class="cols" style="margin-top: 30px">
+        <div>
+          <h3 style="font: 600 16px var(--serif); margin: 0 0 12px">Excess stock</h3>
+          <p class="lede" id="excess-lede"></p>
+          <table class="data">
+            <thead><tr><th>Item</th><th class="num">Excess units</th><th class="num">Value</th></tr></thead>
+            <tbody id="excess"></tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font: 600 16px var(--serif); margin: 0 0 12px">Out of stock and losing sales</h3>
+          <table class="data">
+            <thead><tr><th>Item</th><th class="num">Lost units a week</th><th class="num">Lost revenue a week</th></tr></thead>
+            <tbody id="stockouts"></tbody>
+          </table>
+          <p class="hint" id="stockouts-note"></p>
+          <p class="hint">Estimated from each item's sales pace while it was in stock.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="/static/ops.js"></script>
+<script>
+let period = readPeriod();
+let chart = null;
+
+const link = p => `<a href="/admin/item?sku=${encodeURIComponent(p.sku)}&period=${period}" style="text-decoration:none">
+  <div class="item-cell">${tile(p.sku, p.image)}<div><div class="name">${esc(p.title)}</div><div class="code">${esc(p.sku)}</div></div></div></a>`;
+const plainLink = p => `<a href="/admin/item?sku=${encodeURIComponent(p.sku)}&period=${period}">${esc(p.title)}</a>`;
+const emptyRow = (cols, text) => `<tr><td colspan="${cols}" class="empty">${text}</td></tr>`;
+const STATUS_LABEL = s => (STATUS_NAMES[s] || s);
+
+function render(r) {
+  document.getElementById("subtitle").textContent =
+    `Sales, profit, purchasing and stock across ${r.summary.sku_count} items, last ${r.period_days} days.`;
+  document.getElementById("print-note").textContent = `Generated ${r.generated_at.slice(0, 16)}.`;
+  renderSummary(r.summary);
+  renderTrend(r.trend);
+  renderProfit(r.summary);
+  renderChannels(r.channels);
+  renderProducts(r);
+  renderTop(r.top_sellers);
+  renderProcurement(r.procurement);
+  renderInventory(r.inventory);
+}
+
+function renderSummary(s) {
+  document.getElementById("summary").innerHTML = `
+    <div><div class="fig">${money(s.revenue)}</div><div class="cap">Revenue</div></div>
+    <div><div class="fig${s.net_profit < 0 ? " minus" : ""}">${money(s.net_profit)}</div><div class="cap">Net profit (${pct(s.net_margin_pct)})</div></div>
+    <div><div class="fig">${num(s.units_sold)}</div><div class="cap">Units sold, ${pct(s.sell_through_pct)} sell-through</div></div>
+    <div><div class="fig">${money(s.purchase_spend)}</div><div class="cap">Spent on stock (${num(s.units_received)} units)</div></div>
+    <div><div class="fig">${money(s.stock_value)}</div><div class="cap">Stock value, turnover ${times(s.turnover_annualized)} a year</div></div>`;
+}
+
+function renderTrend(trend) {
+  const box = document.querySelector(".chart-box");
+  if (!window.Chart) {
+    box.style.height = "auto";
+    box.innerHTML = `<p class="empty">The chart needs an internet connection (Chart.js loads from a CDN). The tables below are unaffected.</p>`;
+    return;
+  }
+  const ticks = { color: "#5c5c5c", font: { family: "Inter", size: 11 } };
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("trend-chart"), {
+    data: {
+      labels: trend.map(w => w.week.slice(5)),
+      datasets: [
+        { type: "bar", label: "Revenue", data: trend.map(w => w.revenue), backgroundColor: "#d9d9d6", borderRadius: 2, order: 2 },
+        { type: "line", label: "Net profit", data: trend.map(w => w.net_profit), borderColor: "#000000",
+          backgroundColor: "#000000", borderWidth: 2, pointRadius: 2, tension: 0.2, order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { labels: { color: "#5c5c5c", boxWidth: 10, font: { family: "Inter", size: 12 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${money(ctx.parsed.y)}` } },
+      },
+      scales: {
+        x: { ticks, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { ...ticks, callback: v => "$" + Number(v).toLocaleString("en-US") }, grid: { color: "#ececea" } },
+      },
+    },
+  });
+}
+
+function renderProfit(s) {
+  const note = v => `<span class="pctnote">${pct(v)} of revenue</span>`;
+  document.getElementById("profit").innerHTML = `
+    <tr><td>Revenue</td><td>${money(s.revenue)}</td></tr>
+    <tr><td>Cost of goods sold</td><td>${money(-s.cogs)}</td></tr>
+    <tr class="subtotal"><td>Gross profit ${note(s.gross_margin_pct)}</td><td>${money(s.gross_profit)}</td></tr>
+    <tr><td>Channel and payment fees</td><td>${money(-s.fees)}</td></tr>
+    <tr><td>Written off (damaged or lost)</td><td>${money(-s.writeoffs)}</td></tr>
+    <tr class="total"><td>Net profit ${note(s.net_margin_pct)}</td><td class="${s.net_profit < 0 ? "minus" : ""}">${money(s.net_profit)}</td></tr>`;
+}
+
+function renderChannels(channels) {
+  document.getElementById("channels").innerHTML = channels.length ? channels.map(c => `<tr>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:${CHANNEL_COLORS[c.channel] || "#5c5c5c"}"></span>${esc(CHANNEL_NAMES[c.channel] || c.channel)}</td>
+      <td class="num">${num(c.units)}</td><td class="num">${money(c.revenue)}</td><td class="num">${pct(c.revenue_share_pct)}</td>
+      <td class="num${c.net_profit < 0 ? " minus" : ""}">${money(c.net_profit)}</td><td class="num">${pct(c.net_margin_pct)}</td></tr>`).join("")
+    : emptyRow(6, "No sales in this period.");
+}
+
+function renderProducts(r) {
+  const byClass = Object.fromEntries(r.abc.map(c => [c.class, c]));
+  const a = byClass.A, c = byClass.C;
+  let lede = a.count ? `${a.count} of ${r.summary.sku_count} items bring ${pct(a.revenue_share_pct)} of revenue.` : "No sales in this period yet.";
+  if (c.count && c.stock_share_pct > c.revenue_share_pct + 10) {
+    lede += ` C items hold ${pct(c.stock_share_pct)} of stock value but bring only ${pct(c.revenue_share_pct)} of revenue: that's cash tied up in slow sellers.`;
+  }
+  document.getElementById("abc-lede").textContent = lede;
+  document.getElementById("abc").innerHTML = r.abc.map(k => `<tr>
+      <td><span class="abc ${k.class}">${k.class}</span></td><td class="num">${num(k.count)}</td>
+      <td class="num">${pct(k.revenue_share_pct)}</td><td class="num">${pct(k.stock_share_pct)}</td><td class="num">${money(k.stock_value)}</td></tr>`).join("");
+  document.getElementById("products-note").innerHTML =
+    `${r.product_count > r.products.length ? `The top ${num(r.products.length)} of ${num(r.product_count)} items by revenue. ` : ""}` +
+    `<a href="/api/reports/items.csv?period=${period}" download>Download all ${num(r.product_count)} items as CSV</a>, ` +
+    `which opens in Excel or Numbers.`;
+  document.getElementById("products").innerHTML = r.products.map(p => `<tr>
+      <td>${link(p)}</td><td><span class="abc ${p.abc}">${p.abc}</span></td>
+      <td class="num">${num(p.units_sold)}</td><td class="num">${money(p.revenue)}</td><td class="num">${pct(p.revenue_share_pct)}</td>
+      <td class="num${p.net_profit < 0 ? " minus" : ""}">${money(p.net_profit)}</td><td class="num">${pct(p.net_margin_pct)}</td>
+      <td class="num">${num(p.on_hand)}</td><td class="num">${p.days_left === null ? "—" : num(p.days_left)}</td>
+      <td>${statusTag(p.status)}</td></tr>`).join("");
+}
+
+function trimmedNote(id, shown, total, what) {
+  document.getElementById(id).textContent = total > shown ? `Showing ${num(shown)} of ${num(total)} ${what}.` : "";
+}
+
+function renderTop(top) {
+  document.getElementById("top-units").innerHTML = top.by_units.length
+    ? top.by_units.map((p, i) => `<tr><td class="muted">${i + 1}</td><td>${plainLink(p)}</td><td class="num">${num(p.units_sold)}</td><td class="num">${money(p.revenue)}</td></tr>`).join("")
+    : emptyRow(4, "No sales in this period.");
+  document.getElementById("top-profit").innerHTML = top.by_profit.length
+    ? top.by_profit.map((p, i) => `<tr><td class="muted">${i + 1}</td><td>${plainLink(p)}</td><td class="num">${money(p.net_profit)}</td><td class="num">${num(p.units_sold)}</td></tr>`).join("")
+    : emptyRow(4, "No profitable sales in this period.");
+}
+
+function renderProcurement(p) {
+  trimmedNote("purchases-note", p.by_product.length, p.by_product_count, "items restocked, by spend");
+  trimmedNote("reorders-note", p.reorder_plan.length, p.reorder_count, "items to reorder, soonest to run out first");
+  const t = p.totals, s = p.spend_vs_cogs;
+  const direction = {
+    building: `You spent ${money(s.spend)} on stock and sold ${money(s.cogs)} worth at cost, so inventory is building up.`,
+    drawing_down: `You sold ${money(s.cogs)} worth of stock at cost but bought only ${money(s.spend)}, so inventory is running down.`,
+    steady: `Purchases (${money(s.spend)}) roughly matched what you sold at cost (${money(s.cogs)}).`,
+  }[s.direction];
+  document.getElementById("spend-lede").textContent =
+    `${num(t.orders)} deliveries, ${num(t.units)} units received${t.avg_unit_cost !== null ? ` at ${money(t.avg_unit_cost)} a unit on average` : ""}. ${direction}`;
+  document.getElementById("purchases").innerHTML = p.by_product.length ? p.by_product.map(b => `<tr>
+      <td>${plainLink(b)}</td><td class="num">${num(b.orders)}</td><td class="num">${num(b.units)}</td><td class="num">${money(b.spend)}</td>
+      <td class="num">${money(b.avg_unit_cost)}</td>
+      <td class="num${b.cost_change_pct > 0 ? " minus" : b.cost_change_pct < 0 ? " plus" : ""}">${b.cost_change_pct === null ? "—" : (b.cost_change_pct > 0 ? "+" : "") + pct(b.cost_change_pct)}</td>
+      <td class="muted">${esc(b.last_received)}</td></tr>`).join("")
+    : emptyRow(7, "No stock was received in this period.");
+  document.getElementById("reorders").innerHTML = p.reorder_plan.length
+    ? p.reorder_plan.map(o => `<tr>
+        <td>${plainLink(o)} ${statusTag(o.status)}</td><td class="num">${num(o.on_hand)}</td>
+        <td class="num">${o.days_left === null ? "—" : num(o.days_left)}</td><td class="num">${num(o.quantity)}</td>
+        <td class="num">${money(o.unit_cost)}</td><td class="num">${money(o.estimated_cost)}</td></tr>`).join("")
+      + `<tr><td colspan="5"><strong>Estimated total${p.reorder_count > p.reorder_plan.length ? `, all ${num(p.reorder_count)} items` : ""}</strong></td><td class="num"><strong>${money(p.reorder_budget)}</strong></td></tr>`
+    : emptyRow(6, "Nothing needs reordering right now.");
+}
+
+function renderInventory(inv) {
+  document.getElementById("stockouts-note").textContent = inv.stockout_count > inv.stockouts.length
+    ? `Showing the ${num(inv.stockouts.length)} costliest of ${num(inv.stockout_count)}; together they lose about ` +
+      `${money(inv.stockout_lost_revenue_per_week)} of sales a week.`
+    : "";
+  document.getElementById("status").innerHTML = inv.status.map(s => `<tr>
+      <td>${statusTag(s.status)}</td><td class="num">${num(s.count)}</td><td class="num">${num(s.units)}</td><td class="num">${money(s.value)}</td></tr>`).join("");
+  const max = Math.max(1, ...inv.cover.map(b => b.value));
+  document.getElementById("cover").innerHTML = inv.cover.length ? inv.cover.map(b => `
+      <div>${esc(b.label)} <span class="muted">(${b.count})</span></div>
+      <div class="track"><div class="fill" style="width:${(b.value / max * 100).toFixed(1)}%"></div></div>
+      <div class="val">${money(b.value)}</div>`).join("")
+    : `<p class="empty">No stock on hand.</p>`;
+  document.getElementById("excess-lede").textContent = inv.excess.value > 0
+    ? `${money(inv.excess.value)} of stock (${num(inv.excess.units)} units) is beyond 45 days of sales or isn't selling at all. That's cash you could free up.`
+    : "No excess stock: everything on hand should sell within about 45 days.";
+  document.getElementById("excess").innerHTML = inv.excess.items.length
+    ? inv.excess.items.map(e => `<tr><td>${plainLink(e)}</td><td class="num">${num(e.excess_units)}</td><td class="num">${money(e.excess_value)}</td></tr>`).join("")
+    : emptyRow(3, "None.");
+  document.getElementById("stockouts").innerHTML = inv.stockouts.length
+    ? inv.stockouts.map(s => `<tr><td>${plainLink(s)}</td><td class="num">${num(s.lost_units_per_week, 1)}</td><td class="num minus">${money(s.lost_revenue_per_week)}</td></tr>`).join("")
+    : emptyRow(3, "Nothing that sells is out of stock.");
+}
+
+async function load() {
+  const msg = document.getElementById("msg");
+  try {
+    const res = await fetch(`${API}/reports?period=${period}`);
+    if (!res.ok) throw new Error();
+    render(await res.json());
+    document.getElementById("content").hidden = false;
+    msg.textContent = "";
+  } catch {
+    msg.className = "msg error";
+    msg.textContent = "The report didn't load. Check that the server is running, then refresh.";
+  }
+}
+
+document.getElementById("print-btn").onclick = () => window.print();
+setupPeriodToggle(period, p => { period = p; history.replaceState(null, "", `?period=${p}`); load(); });
+load();
+</script>
+</body>
+</html>

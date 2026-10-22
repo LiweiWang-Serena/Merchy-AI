@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Listings — SkuTrail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f6f6f4;
+    --panel-border: #d9d9d6;
+    --ink: #000000;
+    --ink-dim: #5c5c5c;
+    --ink-dim: #5c5c5c;
+    --brass: #8c6418;
+    --brass-dim: #cbb88f;
+    --red: #b3261e;
+    --green: #1b7f4b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+  }
+  header {
+    padding: 34px 40px 26px;
+    padding-inline: max(40px, calc((100% - 1100px) / 2));
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  header .title-block h1 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 28px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: 0.2px;
+  }
+  header .title-block p {
+    margin: 0;
+    color: var(--ink-dim);
+    font-size: 14px;
+  }
+  #sync-btn {
+    background: var(--ink);
+    color: #ffffff;
+    border: none;
+    padding: 11px 22px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  #sync-btn:hover { background: #2b2b2b; }
+  #sync-btn:disabled { background: var(--brass-dim); cursor: wait; }
+  #sync-status {
+    font-size: 12px;
+    color: var(--ink-dim);
+    margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 32px 40px 60px;
+  }
+
+  .summary-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    margin-bottom: 36px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 18px 18px 16px;
+  }
+  .stat .num {
+    font-family: 'Source Serif 4', serif;
+    font-size: 30px;
+    font-weight: 600;
+  }
+  .stat .num.alert { color: var(--red); }
+  .stat .label {
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    margin-top: 4px;
+  }
+
+  section { margin-bottom: 40px; }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .section-head h2 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .section-head .count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--ink-dim);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #ececea;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+  }
+  td.title-cell { font-family: 'Inter', sans-serif; font-size: 13.5px; }
+  tr:hover td { background: #f7f7f5; }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .tag.red { background: rgba(193,88,76,0.15); color: var(--red); }
+  .tag.green { background: rgba(91,159,124,0.15); color: var(--green); }
+  .tag.brass { background: rgba(195,154,92,0.15); color: var(--brass); }
+
+  .empty-note {
+    color: var(--ink-dim);
+    font-size: 13px;
+    font-style: italic;
+    padding: 14px 0;
+  }
+
+  .rec-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--brass);
+    border-radius: 3px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+  }
+  .rec-card .rec-title { font-size: 14px; font-weight: 500; }
+  .rec-card .rec-reason { font-size: 12.5px; color: var(--ink-dim); margin-top: 3px; }
+  .rec-card .rec-qty {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--brass);
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  #chart-wrap {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+
+  @media (max-width: 900px) {
+    .summary-row { grid-template-columns: repeat(2, 1fr); }
+    header { padding: 24px 20px; }
+    main { padding: 24px 20px 50px; }
+  }
+</style>
+</head>
+<body>
+<script src="/static/nav.js"></script>
+
+<header>
+  <div class="title-block">
+    <h1>Listings</h1>
+    <p>What Amazon and eBay show for each item, and where the two disagree.
+      <a href="/admin/ebay-draft" style="color: var(--brass)">Draft an eBay listing from one of your Amazon listings</a></p>
+    <p id="ebay-source" style="margin-top: 6px"></p>
+  </div>
+  <div>
+    <button id="sync-btn" onclick="runSync()">Sync channels</button>
+    <div id="sync-status">Not synced yet.</div>
+  </div>
+</header>
+
+<main>
+
+  <div class="summary-row" id="summary-row">
+    <div class="stat"><div class="num">—</div><div class="label">SKUs tracked</div></div>
+    <div class="stat"><div class="num alert">—</div><div class="label">Low stock</div></div>
+    <div class="stat"><div class="num">—</div><div class="label">Fast movers</div></div>
+    <div class="stat"><div class="num">—</div><div class="label">Dead stock</div></div>
+    <div class="stat"><div class="num">—</div><div class="label">Listed value at sale price</div></div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>Cross-channel stock discrepancies</h2>
+      <span class="count" id="disc-count"></span>
+    </div>
+    <table>
+      <thead><tr><th>SKU</th><th>Title</th><th>Amazon qty</th><th>eBay qty</th><th>Difference</th></tr></thead>
+      <tbody id="disc-body"></tbody>
+    </table>
+    <div class="empty-note" id="disc-empty" style="display:none;">No discrepancies found. Run a sync first.</div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What to reorder</h2>
+    </div>
+    <p class="empty-note" style="display:block">Reorder quantities are worked out from your inventory ledger
+      (real purchases and sales), not from channel listings. See the
+      <a href="/admin/reports#reorders-title" style="color:inherit">reorder plan in Reports</a>.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Fastest sellers (last 30 days)</h2>
+    </div>
+    <div id="chart-wrap">
+      <canvas id="velocity-chart" height="90"></canvas>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Low stock</h2>
+      <span class="count" id="low-count"></span>
+    </div>
+    <table>
+      <thead><tr><th>SKU</th><th>Title</th><th>Qty left</th><th>Channels</th></tr></thead>
+      <tbody id="low-body"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Full SKU ledger</h2>
+      <span class="count" id="all-count"></span>
+    </div>
+    <table>
+      <thead><tr><th>SKU</th><th>Title</th><th>Qty</th><th>Sold (30d)</th><th>Avg price</th><th>Channels</th></tr></thead>
+      <tbody id="all-body"></tbody>
+    </table>
+  </section>
+
+</main>
+
+<script>
+const API = "/api";
+let chart;
+
+async function runSync() {
+  const btn = document.getElementById('sync-btn');
+  const status = document.getElementById('sync-status');
+  btn.disabled = true;
+  status.textContent = "Pulling from Amazon + eBay...";
+  try {
+    const res = await fetch(API + "/sync", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Sync failed. Try again.");
+    status.textContent = `Synced ${data.amazon_records} Amazon and ${data.ebay_records} eBay listings. ${data.discrepancies.length} discrepancies found.`;
+    await loadReport();
+  } catch (e) {
+    status.textContent = e.message === "Failed to fetch"
+      ? "Sync failed. Check that the server is running, then try again."
+      : e.message;
+  }
+  btn.disabled = false;
+}
+
+function escapeText(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function showEbaySource() {
+  const line = document.getElementById('ebay-source');
+  try {
+    const s = await (await fetch(API + "/ebay/status")).json();
+    line.innerHTML = s.connected
+      ? `eBay figures come from the connected account${s.username ? ` (${escapeText(s.username)})` : ""}.`
+      : `eBay figures here are demo data. <a href="/admin/ebay" style="color: var(--brass)">Connect the eBay account</a> to use the real ones.`;
+  } catch { line.textContent = ""; }
+}
+
+async function loadReport() {
+  const res = await fetch(API + "/report");
+  const report = await res.json();
+  renderSummary(report.summary);
+  renderDiscrepancies(report._discrepancies || []);
+  renderLowStock(report.low_stock);
+  renderAllSkus(report.all_skus);
+  renderChart(report.all_skus);
+}
+
+function renderSummary(s) {
+  const nums = document.querySelectorAll('#summary-row .num');
+  nums[0].textContent = s.total_skus_tracked;
+  nums[1].textContent = s.low_stock_count;
+  nums[2].textContent = s.fast_mover_count;
+  nums[3].textContent = s.dead_stock_count;
+  nums[4].textContent = "$" + s.total_inventory_value.toLocaleString();
+}
+
+// Each table shows its first ROW_LIMIT rows (the count stays complete) and
+// is built in one pass: appending rows one by one would re-parse the
+// table every time and freeze the page with thousands of listings.
+const ROW_LIMIT = 100;
+const e = v => escapeText(v ?? "");
+const skuLink = sku => `<a href="/admin/item?sku=${encodeURIComponent(sku)}" style="color:inherit">${e(sku)}</a>`;
+
+function limitNote(shown, total) {
+  return total > shown
+    ? `<tr><td colspan="6" class="empty-note" style="display:table-cell">Showing ${shown.toLocaleString()} of ` +
+      `${total.toLocaleString()}. See every item on the <a href="/admin/inventory" style="color:inherit">Inventory</a> page.</td></tr>`
+    : "";
+}
+
+function renderDiscrepancies(list) {
+  const body = document.getElementById('disc-body');
+  const empty = document.getElementById('disc-empty');
+  document.getElementById('disc-count').textContent = list.length.toLocaleString() + " flagged";
+  if (!list.length) { body.innerHTML = ""; empty.style.display = "block"; return; }
+  empty.style.display = "none";
+  const rows = [...list].sort((a, b) => b.difference - a.difference).slice(0, ROW_LIMIT);
+  body.innerHTML = rows.map(d => `<tr>
+      <td>${skuLink(d.sku)}</td>
+      <td class="title-cell">${e(d.title)}</td>
+      <td>${e(d.amazon_qty)}</td>
+      <td>${e(d.ebay_qty)}</td>
+      <td><span class="tag red">±${e(d.difference)}</span></td>
+    </tr>`).join("") + limitNote(rows.length, list.length);
+}
+
+function renderLowStock(list) {
+  const body = document.getElementById('low-body');
+  document.getElementById('low-count').textContent = list.length.toLocaleString() + " SKUs";
+  const rows = [...list].sort((a, b) => a.total_quantity - b.total_quantity).slice(0, ROW_LIMIT);
+  body.innerHTML = rows.map(s => `<tr>
+      <td>${skuLink(s.sku)}</td>
+      <td class="title-cell">${e(s.title)}</td>
+      <td><span class="tag ${s.total_quantity === 0 ? 'red' : 'brass'}">${e(s.total_quantity)}</span></td>
+      <td>${e(s.channel_count)}</td>
+    </tr>`).join("") + limitNote(rows.length, list.length);
+}
+
+function renderAllSkus(list) {
+  const body = document.getElementById('all-body');
+  document.getElementById('all-count').textContent = list.length.toLocaleString() + " SKUs";
+  const rows = [...list].sort((a, b) => b.total_units_sold_30d - a.total_units_sold_30d).slice(0, ROW_LIMIT);
+  body.innerHTML = rows.map(s => `<tr>
+      <td>${skuLink(s.sku)}</td>
+      <td class="title-cell">${e(s.title)}</td>
+      <td>${e(s.total_quantity)}</td>
+      <td>${e(s.total_units_sold_30d)}</td>
+      <td>$${Number(s.avg_price).toFixed(2)}</td>
+      <td>${s.channel_count === 2 ? '<span class="tag green">both</span>' : e(s.channels[0])}</td>
+    </tr>`).join("") + limitNote(rows.length, list.length);
+}
+
+function renderChart(list) {
+  if (!window.Chart) {
+    // Chart.js loads from a CDN; without internet, show a note instead of breaking the page.
+    document.getElementById('chart-wrap').innerHTML =
+      '<p class="empty-note" style="display:block">The chart needs an internet connection. The tables are unaffected.</p>';
+    return;
+  }
+  // The 20 fastest sellers: a bar per SKU stops being readable beyond that.
+  const sorted = [...list].sort((a,b) => b.total_units_sold_30d - a.total_units_sold_30d).slice(0, 20);
+  const ctx = document.getElementById('velocity-chart');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(s => s.sku),
+      datasets: [{
+        label: 'Units sold (30d)',
+        data: sorted.map(s => s.total_units_sold_30d),
+        backgroundColor: '#8c6418',
+        borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#5c5c5c', font: { family: 'IBM Plex Mono', size: 11 } }, grid: { color: '#d9d9d6' } },
+        y: { ticks: { color: '#5c5c5c' }, grid: { color: '#d9d9d6' } }
+      }
+    }
+  });
+}
+
+// Try loading an existing report on page load (in case sync already ran).
+loadReport().catch(() => {});
+showEbaySource();
+</script>
+
+</body>
+</html>

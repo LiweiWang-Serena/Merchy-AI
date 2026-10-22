@@ -1,0 +1,11 @@
+flask==3.0.3
+pytest==8.3.3
+requests==2.32.3
+python-amazon-sp-api==1.9.13
+python-dotenv==1.0.1
+# PostgreSQL driver (used when DATABASE_URL is set)
+psycopg[binary]>=3.1,<4
+# Claude API client (AI customer support, used when ANTHROPIC_API_KEY is set)
+anthropic>=0.40
+# Gemini API client (AI customer support, used when GEMINI_API_KEY is set)
+google-genai>=1.0
