@@ -14,14 +14,14 @@ import re
 # A shared product catalog used across both mock marketplaces so the sync
 # step has real overlaps (and real discrepancies) to reconcile.
 CATALOG = [
-    {"sku": "AUC-CAM-001", "title": "Vintage Film Camera - Refurbished"},
-    {"sku": "AUC-WAT-014", "title": "Automatic Dive Watch, Stainless Steel"},
-    {"sku": "AUC-LMP-027", "title": "Mid-Century Brass Table Lamp"},
-    {"sku": "AUC-RUG-039", "title": "Hand-Woven Wool Area Rug 5x7"},
-    {"sku": "AUC-GTR-052", "title": "Acoustic Guitar, Solid Spruce Top"},
-    {"sku": "AUC-CHR-061", "title": "Leather Accent Chair, Cognac"},
-    {"sku": "AUC-COI-073", "title": "Coin Collection Lot - Mixed Era"},
-    {"sku": "AUC-VIN-088", "title": "Vinyl Record Bundle, Jazz Classics"},
+    {"sku": "MOTO-THR-031", "title": "Throttle Cable 31 inch ATV Quad"},
+    {"sku": "MOTO-THB-022", "title": "Thumb Throttle Assembly 22mm"},
+    {"sku": "MOTO-INT-110", "title": "Intake Manifold Pipe 110cc"},
+    {"sku": "MOTO-BRK-180", "title": "Rear Brake Cable 180cm"},
+    {"sku": "MOTO-CAR-019", "title": "Carburetor 19mm PZ19"},
+    {"sku": "MOTO-SPK-A7", "title": "Spark Plug A7TC 4 Pack"},
+    {"sku": "MOTO-CHN-420", "title": "Drive Chain 420 x 100 Links"},
+    {"sku": "MOTO-AIR-035", "title": "Air Filter 35mm Cone"},
 ]
 
 # Richer per-SKU detail used for the "generate eBay listing from Amazon
@@ -31,44 +31,84 @@ CATALOG = [
 # photo URLs -- for products you already sell, not scraped from a
 # competitor or another seller's page.
 PRODUCT_DETAILS = {
-    "AUC-CAM-001": {
-        "brand": "Pentax",
+    "MOTO-THR-031": {
+        "brand": "PowerSport",
         "bullets": [
-            "35mm SLR film camera, fully serviced and light-seal replaced",
-            "Includes 50mm f/1.8 lens, tested on real film rolls",
-            "Light meter confirmed accurate against a handheld meter",
-            "Comes with original leather case",
+            "Fits 50-125cc ATV quads",
+            "Pre-lubricated inner cable",
         ],
         "images": [
-            "https://images.example.com/auc-cam-001/front.jpg",
-            "https://images.example.com/auc-cam-001/side.jpg",
-            "https://images.example.com/auc-cam-001/lens.jpg",
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/bf0b9d28b43c4a198f17e7c84f392ab5~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
         ],
     },
-    "AUC-WAT-014": {
-        "brand": "Seiko",
+    "MOTO-THB-022": {
+        "brand": "PowerSport",
         "bullets": [
-            "Automatic movement, no battery required",
-            "200m water resistance, screw-down crown",
-            "Stainless steel case and bracelet, recently polished",
-            "Runs within +/-15 seconds/day on our timegrapher test",
+            "Fits 50-250cc engines",
+            "Includes throttle cable",
         ],
         "images": [
-            "https://images.example.com/auc-wat-014/front.jpg",
-            "https://images.example.com/auc-wat-014/wrist.jpg",
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d58eddd663b4ef984c62c42f91b28b3~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
         ],
     },
-    "AUC-LMP-027": {
-        "brand": "Generic (Unbranded Mid-Century Style)",
+    "MOTO-INT-110": {
+        "brand": "PowerSport",
         "bullets": [
-            "Solid brass base, hand-polished",
-            "Original linen drum shade, no stains or tears",
-            "Rewired with new UL-listed cord and socket",
-            "Tested and working, in-line rotary switch",
+            "Fits 110cc horizontal engines",
+            "Gasket included",
         ],
         "images": [
-            "https://images.example.com/auc-lmp-027/full.jpg",
-            "https://images.example.com/auc-lmp-027/base-detail.jpg",
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/bf0b9d28b43c4a198f17e7c84f392ab5~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
+        ],
+    },
+    "MOTO-BRK-180": {
+        "brand": "PowerSport",
+        "bullets": [
+            "180cm galvanised cable",
+            "Fits most mid-size quads",
+        ],
+        "images": [
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d58eddd663b4ef984c62c42f91b28b3~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
+        ],
+    },
+    "MOTO-CAR-019": {
+        "brand": "PowerSport",
+        "bullets": [
+            "For 50-110cc engines",
+            "Cable-operated choke",
+        ],
+        "images": [
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/bf0b9d28b43c4a198f17e7c84f392ab5~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
+        ],
+    },
+    "MOTO-SPK-A7": {
+        "brand": "PowerSport",
+        "bullets": [
+            "Standard A7TC replacement",
+            "Four plugs per pack",
+        ],
+        "images": [
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d58eddd663b4ef984c62c42f91b28b3~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
+        ],
+    },
+    "MOTO-CHN-420": {
+        "brand": "PowerSport",
+        "bullets": [
+            "420 pitch, master link included",
+            "Heat-treated pins",
+        ],
+        "images": [
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/bf0b9d28b43c4a198f17e7c84f392ab5~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
+        ],
+    },
+    "MOTO-AIR-035": {
+        "brand": "PowerSport",
+        "bullets": [
+            "35mm high-flow cone",
+            "Washable foam",
+        ],
+        "images": [
+            "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d58eddd663b4ef984c62c42f91b28b3~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d",
         ],
     },
 }
