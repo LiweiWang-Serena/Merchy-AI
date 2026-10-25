@@ -1,4 +1,4 @@
-# SkuTrail — Multichannel Inventory, Orders & Procurement Reporting
+# Merchy-AI — Multichannel Inventory, Orders & Procurement Reporting
 
 ![tests](https://github.com/LiweiWang-Serena/Merchy-AI/actions/workflows/tests.yml/badge.svg)
 

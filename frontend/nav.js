@@ -69,7 +69,7 @@
   nav.className = "cl-nav";
   nav.setAttribute("aria-label", "Admin");
   nav.innerHTML = `
-    <a class="cl-brand" href="/admin">SkuTrail</a>
+    <a class="cl-brand" href="/admin">Merchy-AI</a>
     <div class="cl-links">${links}</div>
     <div class="cl-end">
       <a class="cl-store" href="/" target="_blank" rel="noopener">View store</a>

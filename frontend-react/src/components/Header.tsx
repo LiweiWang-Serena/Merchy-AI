@@ -13,7 +13,7 @@ export function Header() {
 
   return (
     <header className="site-header">
-      <a className="brand" href="/react/">SkuTrail Demo Store</a>
+      <a className="brand" href="/react/">Merchy-AI Demo Store</a>
       <nav>
         <a href="/">Original version</a>
         <a className="cart-link" href="/cart">

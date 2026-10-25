@@ -58,7 +58,7 @@ FMT = "%Y-%m-%d %H:%M:%S"
 
 DEFAULT_SETTINGS = {
     "assistant_name": "Parts Assistant",
-    "store_name": "SkuTrail Demo Store",
+    "store_name": "Merchy-AI Demo Store",
     "greeting": "Hi! I'm the store's AI assistant. Ask me about parts, fitment, stock or an order, "
                 "and I can pass you to a person on our team anytime.",
     "tone": "Warm, friendly and practical, like a helpful person at a parts counter. Short, clear "

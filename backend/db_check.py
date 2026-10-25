@@ -75,7 +75,7 @@ def main():
             problems.append(f"upsert kept {meta!r}")
         if problems:
             sys.exit("PostgreSQL connected, but some values came back wrong: " + "; ".join(problems))
-        print(f"PostgreSQL {version} works with SkuTrail: every table created, and rows written "
+        print(f"PostgreSQL {version} works with Merchy-AI: every table created, and rows written "
               f"and read back exactly. Your data wasn't touched.")
     finally:
         db.PG_SCHEMA = None

@@ -96,7 +96,7 @@ export default function App() {
       <Header />
       <main>
         <h1 className="page-title">In stock now</h1>
-        <p className="page-subtitle">Sample powersports and small-engine parts. A demo store for SkuTrail: nothing is charged or shipped.</p>
+        <p className="page-subtitle">Sample powersports and small-engine parts. A demo store for Merchy-AI: nothing is charged or shipped.</p>
 
         {!search && best.length > 0 && (
           <section>

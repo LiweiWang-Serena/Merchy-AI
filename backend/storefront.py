@@ -14,7 +14,7 @@ from db import get_connection, ensure_storefront_tables
 # Filler detail for catalog items that don't have rich PRODUCT_DETAILS yet,
 # so every SKU still renders a reasonable storefront page.
 FALLBACK_DETAIL = {
-    "brand": "SkuTrail Demo",
+    "brand": "Merchy-AI Demo",
     "bullets": ["Inspected and authenticated by our team", "Ships insured"],
     "images": ["https://images.example.com/placeholder/item.jpg"],
 }
