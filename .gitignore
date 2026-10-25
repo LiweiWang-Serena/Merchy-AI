@@ -8,3 +8,4 @@ __pycache__/
 # React version: installed packages and build output
 frontend-react/node_modules/
 frontend-react/dist/
+backend/data/
