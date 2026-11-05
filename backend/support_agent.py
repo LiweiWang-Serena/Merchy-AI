@@ -41,6 +41,8 @@ from datetime import datetime
 
 import db
 import notifications
+from escalation import reports_problem
+import retrieval
 import storefront
 from db import get_connection
 
@@ -114,8 +116,10 @@ TOOLS = [
     {
         "name": "request_human",
         "description": "Hand the conversation to a person on the team. Use it when the customer asks "
-                       "for a person, or when you can't resolve their question. Ask for their email "
-                       "first so the team can reply.",
+                       "for a person, when the store articles don't cover their question, or when they "
+                       "report a problem with an order that needs staff action: a refund, return, "
+                       "replacement, or a wrong, damaged, missing or late item. Include a one-line "
+                       "summary of what they need, and ask for their email so the team can reply.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -343,6 +347,8 @@ How to help:
 - Get product, price, stock and order facts from the tools. Never guess them. When you mention a product, include its link path (for example /product?sku=CARB-00123).
 - Answer policy questions only from the store articles below. If they don't cover it, say you're not sure and offer to pass the question to a person on the team (request_human).
 - Don't promise refunds, discounts, delivery dates or exceptions beyond what the articles say.
+- Order problems need a person: when the customer says something already went wrong (a wrong, damaged, broken, defective or missing item, a part that doesn't fit, a late or lost package, or they want a refund, return or replacement), explain what the articles say, ask for the order number or photos if useful, and call request_human with a one-line summary in the same reply. Don't only say someone will follow up: call the tool. If they are just asking about a policy, or a what-if, answer it without handing off.
+- When you link a product, use its title as the link text, and don't put punctuation right after the link.
 - Orders: you need the order number and the email used at checkout before you can look one up. Never share details of anyone else's order.
 - Keep answers short: two to four sentences, in the customer's language.
 - Stay on topics related to the store and its products.
@@ -361,9 +367,7 @@ Store articles:
 def run_tool(name, args, conversation_id):
     try:
         if name == "search_products":
-            page = storefront.product_page(str(args.get("query", ""))[:100], 1, 6)
-            return {"total_matches": page["total"],
-                    "products": [_product_brief(p) for p in page["items"]]}
+            return retrieval.hybrid_products(str(args.get("query", "")), storefront, _product_brief)
         if name == "get_product":
             product = storefront.get_product(str(args.get("sku", "")).strip())
             if not product:
@@ -372,6 +376,8 @@ def run_tool(name, args, conversation_id):
             return {"found": True, **_product_brief(product), "description": " ".join(text.split())[:800]}
         if name == "check_order":
             return _check_order(args.get("order_number"), args.get("email"))
+        if name == "request_human" and conversation_id in _drafting:
+            return {"error": "A person already has this conversation: write the reply instead of handing off."}
         if name == "request_human":
             return _request_human(conversation_id, args.get("email"), args.get("summary"))
     except Exception:
@@ -409,6 +415,17 @@ def _check_order(order_number, email):
 
 def _request_human(conversation_id, email, summary):
     email, summary = (email or "").strip()[:200] or None, (summary or "").strip()[:500]
+    if email:
+        # Keep the email only if the customer actually wrote it: the model sometimes fills in a placeholder.
+        conn = get_connection()
+        try:
+            said = " ".join(r[0] for r in conn.execute(
+                "SELECT content FROM support_messages WHERE conversation_id = ? AND role = 'customer'",
+                (conversation_id,)).fetchall()).lower()
+        finally:
+            conn.close()
+        if email.lower() not in said:
+            email = None
     conn = get_connection()
     try:
         conn.execute("UPDATE support_conversations SET needs_human = 1, resolved_at = NULL, notified_at = ?, "
@@ -422,6 +439,16 @@ def _request_human(conversation_id, email, summary):
     return {"handed_off": True,
             "note": "The team has been notified and will reply by email." if email else
                     "The team has been notified. If the customer hasn't given an email, ask for one."}
+
+
+def _handed_off(conversation_id):
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT needs_human FROM support_conversations WHERE id = ?",
+                           (conversation_id,)).fetchone()
+        return bool(row and row[0])
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +465,7 @@ def check_rate(ip):
     recent.append(now)
 
 
-def chat(conversation_id, message):
+def chat(conversation_id, message, context_sku=None):
     message = (message or "").strip()
     if not message:
         raise ValueError("Type a message first.")
@@ -494,11 +521,16 @@ def chat(conversation_id, message):
     elif client is None:
         reply, mode = offline_answer(message, knowledge), "offline"
     else:
-        system = build_system_prompt(settings, knowledge, examples)
+        examples = similar_examples(message, examples)
+        system = build_system_prompt(settings, knowledge, examples) + _listing_context(context_sku)
         if hasattr(client, "respond"):       # an adapter, e.g. Gemini
             reply, mode = _ask_adapter(client, system, history, message, conversation_id), "ai"
         else:                                # the Claude client
             reply, mode = _ask_claude(client, conversation_id, history, message, system), "ai"
+
+    # Safety net: the model sometimes explains the policy but forgets to hand off.
+    if mode == "ai" and reports_problem(message) and not _handed_off(conversation_id):
+        _request_human(conversation_id, None, f"Order problem (automatic handoff): {message[:200]}")
 
     conn = get_connection()
     try:
@@ -574,10 +606,136 @@ def offline_answer(message, knowledge):
 
 
 # ---------------------------------------------------------------------------
+# Suggested replies for the team (admin)
+# ---------------------------------------------------------------------------
+
+_drafting = set()   # conversations being drafted: the handoff tool is off for them
+
+DRAFT_INSTRUCTIONS = """
+
+You are now drafting a reply for a person on the team. They will check and edit it on the Support page before it goes to the customer.
+- Write the reply itself, ready to send, in the team's voice ("we"), two to five sentences. No notes to the staff member and no label such as "Draft:".
+- Use the store articles and the tools (products, orders) for facts. Don't call request_human: a person already has this conversation.
+- Where the articles leave a decision to the team, such as approving a refund or a replacement, say what happens next or what you need from the customer, without promising an outcome the articles don't give.
+"""
+
+
+def _answer_pairs(staff=True, limit=300):
+    """Earlier customer questions with the team's answer: staff replies, or the admin's corrections."""
+    column, where = ("content", "staff_name IS NOT NULL") if staff else ("correction", "correction IS NOT NULL AND staff_name IS NULL")
+    conn = get_connection()
+    try:
+        rows = conn.execute(f"SELECT id, conversation_id, {column} AS answer FROM support_messages WHERE {where} "
+                            "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        pairs = []
+        for r in rows:
+            q = conn.execute("SELECT content FROM support_messages WHERE conversation_id = ? AND role = 'customer' "
+                             "AND id < ? ORDER BY id DESC LIMIT 1", (r["conversation_id"], r["id"])).fetchone()
+            if q:
+                pairs.append({"question": q[0], "answer": r["answer"]})
+        return pairs
+    finally:
+        conn.close()
+
+
+def similar_examples(message, fallback):
+    """The admin's corrections closest in meaning to this message, or the latest ones."""
+    try:
+        found = retrieval.similar_answers(message, _answer_pairs(staff=False), k=4)
+    except Exception:
+        found = []
+    return [{"question": f["question"], "answer": f["answer"]} for f in found] or fallback
+
+
+def _listing_context(sku):
+    """The listing the customer is writing from, so "this part" has a meaning."""
+    if not sku:
+        return ""
+    try:
+        p = storefront.get_product(str(sku).strip()[:120])
+    except Exception:
+        return ""
+    if not p:
+        return ""
+    text = " ".join(re.sub(r"<[^>]+>", " ", p.get("description_html") or "").split())[:800]
+    return (f"\nThe customer is writing from this listing, so \"this part\" means it: {p['title']} "
+            f"(link /product?sku={p['sku']}, price {p.get('price')}). {text}\n")
+
+
+def _complaint_note(source):
+    counts = source.get("complaints") or {}
+    return (" (buyer complaints on this listing: " + ", ".join(f"{k} {v}" for k, v in counts.items()) + ")") if counts else ""
+
+
+def _draft_context():
+    conn = get_connection()
+    try:
+        return get_settings(conn), list_knowledge(conn), corrections(conn)
+    finally:
+        conn.close()
+
+
+def suggest_reply(conversation_id):
+    """A reply draft for the person handling the conversation (text only)."""
+    return suggest_reply_with_sources(conversation_id)["suggestion"]
+
+
+def suggest_reply_with_sources(conversation_id):
+    """A reply draft for the person handling the conversation, from the store articles, the tools, and
+    the listings closest in meaning to what the customer wrote (retrieval.search). Nothing is sent or
+    saved: the person edits it and sends it with staff_reply(). Returns the draft and the listings used."""
+    convo = get_conversation(conversation_id)
+    client = CLIENT_FACTORY()
+    if client is None:
+        raise ValueError("Suggested replies need the AI service: set GEMINI_API_KEY or ANTHROPIC_API_KEY.")
+    history = [{"role": "user" if m["role"] == "customer" else "assistant",
+                "content": f"[{m['staff_name']}, a person on the team, replied:] {m['content']}"
+                           if m.get("staff_name") else m["content"]}
+               for m in convo["messages"]][-HISTORY_MESSAGES:]
+    turns = _merge_turns(history)
+    if not turns or turns[-1]["role"] != "user":
+        raise ValueError("The customer hasn't written anything new to reply to.")
+    last = turns.pop()["content"]
+    ask = f"{last}\n\n[For the assistant: write the next reply the team should send to this customer.]"
+    settings, knowledge, examples = _draft_context()
+    customer_said = " ".join(m["content"] for m in convo["messages"] if m["role"] == "customer")[-1500:]
+    sources = retrieval.search(customer_said, k=3)
+    for s in sources:
+        s["complaints"] = retrieval.complaints(s["sku"], s["title"])
+    try:
+        past = retrieval.similar_answers(customer_said, _answer_pairs(staff=True), k=3)
+    except Exception:   # no database or no vectors: draft without earlier answers
+        past = []
+    system = build_system_prompt(settings, knowledge, examples) + DRAFT_INSTRUCTIONS
+    if sources:
+        system += ("\nListings that may be relevant, found by meaning from the store's catalog. Use one only if it "
+                   "clearly matches what the customer is asking about, and link it with its title:\n"
+                   + "\n".join(f"- {s['title']} ({s['link'] or 'no link'}){_complaint_note(s)}: {s['text'][:600]}" for s in sources) + "\n")
+    if past:
+        system += ("\nHow the team answered similar questions before. Follow the substance, not the details, "
+                   "and never repeat another customer's personal details:\n"
+                   + "\n".join(f"- Customer: {p['question'][:300]}\n  Team: {p['answer'][:500]}" for p in past) + "\n")
+    _drafting.add(conversation_id)
+    try:
+        if hasattr(client, "respond"):       # an adapter, e.g. Gemini
+            draft = _ask_adapter(client, system, turns, ask, conversation_id)
+        else:                                # the Claude client
+            draft = _ask_claude(client, conversation_id, turns, ask, system)
+    finally:
+        _drafting.discard(conversation_id)
+    if draft == TROUBLE_REPLY:
+        raise ValueError("The AI service didn't answer. Try again in a moment.")
+    return {"suggestion": draft,
+            "sources": [{"title": s["title"], "link": s["link"], "score": s["score"], "fit": s.get("fit"),
+                         "complaints": s.get("complaints") or {}} for s in sources],
+            "past_answers": [{"question": p["question"][:200], "score": p["score"]} for p in past]}
+
+
+# ---------------------------------------------------------------------------
 # Reviewing conversations (admin)
 # ---------------------------------------------------------------------------
 
-def list_conversations(limit=40):
+def list_conversations(limit=100):
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -586,7 +744,10 @@ def list_conversations(limit=40):
                       (SELECT content FROM support_messages m WHERE m.conversation_id = c.id AND m.role = 'customer'
                        ORDER BY m.id LIMIT 1) AS first_question,
                       (SELECT CASE WHEN m.staff_name IS NOT NULL THEN 'staff' ELSE m.role END
-                       FROM support_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_by
+                       FROM support_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_by,
+                      (SELECT COUNT(*) FROM support_messages m WHERE m.conversation_id = c.id AND m.role = 'customer'
+                       AND m.id > COALESCE((SELECT MAX(s.id) FROM support_messages s
+                                            WHERE s.conversation_id = c.id AND s.role = 'assistant'), 0)) AS unread
                FROM support_conversations c ORDER BY c.last_message_at DESC LIMIT ?""", (limit,)).fetchall()
     finally:
         conn.close()

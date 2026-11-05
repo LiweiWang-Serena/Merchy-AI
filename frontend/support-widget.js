@@ -24,6 +24,8 @@
     .sw-panel[hidden], .sw-launch[hidden] { display: none; }
     .sw-head { padding: 14px 16px 10px; border-bottom: 1px solid #ececea; }
     .sw-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+    .sw-new { margin-left: 4px; font: inherit; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 6px; border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; opacity: .85; }
+    .sw-new:hover { opacity: 1; }
     .sw-tag { font: 600 11px 'Inter', sans-serif; border: 1px solid #000; border-radius: 3px; padding: 1px 6px; }
     .sw-close { margin-left: auto; background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: #5c5c5c; }
     .sw-note { color: #5c5c5c; font-size: 12.5px; margin-top: 3px; }
@@ -61,7 +63,7 @@
   panel.hidden = true;
   panel.innerHTML = `
     <div class="sw-head">
-      <div class="sw-title"><span class="sw-name">Store assistant</span><span class="sw-tag">AI</span>
+      <div class="sw-title"><span class="sw-name">Store assistant</span><span class="sw-tag">AI</span><button type="button" class="sw-new" title="Start a new conversation">New chat</button>
         <button class="sw-close" type="button" aria-label="Close chat">&times;</button></div>
       <div class="sw-note">You're chatting with an AI assistant. Ask for a person anytime.</div>
     </div>
@@ -81,7 +83,10 @@
 
   function persist() { sessionStorage.setItem(STORE_KEY, JSON.stringify(saved)); }
 
-  // Plain text, with /product?sku=... turned into links (built as elements, never as HTML).
+   // Plain text with product links, built as elements (never as HTML):
+  // "[Title](/product?sku=X)" shows the title as the link; a bare "/product?sku=X" shows "View product".
+  // Markdown list markers and **bold** are tidied into plain text.
+  const LINK = /(\[[^\]\n]{1,200}\]\(\/product\?sku=[A-Za-z0-9._-]+\)|\/product\?sku=[A-Za-z0-9._-]+)/;
   function bubble(role, text, who) {
     const el = document.createElement("div");
     el.className = `sw-msg ${role}`;
@@ -91,13 +96,23 @@
       label.textContent = who;
       el.appendChild(label);
     }
-    for (const part of String(text).split(/(\/product\?sku=[A-Za-z0-9._-]+)/)) {
-      if (/^\/product\?sku=/.test(part)) {
+    const tidy = String(text)
+      .replace(/^[ \t]*[*-][ \t]+/gm, "• ")        // "*   item" or "- item" -> "• item"
+      .replace(/\*\*([^*\n]+)\*\*/g, "$1");          // **bold** -> bold
+    for (const part of tidy.split(LINK)) {
+      if (!part) continue;
+      const md = part.match(/^\[([^\]]+)\]\((\/product\?sku=[A-Za-z0-9._-]+)\)$/);
+      const bare = !md && /^\/product\?sku=/.test(part);
+      if (md || bare) {
+        let href = md ? md[2] : part;
+        const tail = href.match(/[.-]+$/);           // a sentence's full stop is not part of the SKU
+        if (tail) href = href.slice(0, -tail[0].length);
         const a = document.createElement("a");
-        a.href = part;
-        a.textContent = part.replace("/product?sku=", "View ");
+        a.href = href;
+        a.textContent = md ? md[1] : "View product";
         el.appendChild(a);
-      } else if (part) {
+        if (tail && !md) el.appendChild(document.createTextNode(tail[0]));
+      } else {
         el.appendChild(document.createTextNode(part));
       }
     }
@@ -105,7 +120,6 @@
     log.scrollTop = log.scrollHeight;
     return el;
   }
-
   const staffLabel = name => `${name || "Our team"}, from our team`;
 
   function show(m) {
@@ -174,7 +188,8 @@
       const res = await fetch("/api/support/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: saved.id, message: text }),
+        body: JSON.stringify({ conversation_id: saved.id, message: text,
+          context_sku: location.pathname === "/product" ? new URLSearchParams(location.search).get("sku") : null }),
       });
       const data = await res.json();
       typing.remove();
@@ -213,6 +228,13 @@
   send.onclick = () => ask(input.value);
   input.onkeydown = e => { if (e.key === "Enter") ask(input.value); };
   panel.querySelector(".sw-human").onclick = () => ask("I'd like to talk to a person, please.");
+  // New chat: forget this conversation in this tab and start over with the greeting.
+  const newChat = document.querySelector(".sw-new");
+  if (newChat) newChat.addEventListener("click", (e) => {
+    e.stopPropagation();
+    sessionStorage.setItem(STORE_KEY, JSON.stringify({ messages: [], open: true }));
+    location.reload();
+  });
   if (saved.open) setOpen(true);
   else schedulePoll();
 })();

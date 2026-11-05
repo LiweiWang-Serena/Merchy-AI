@@ -7,40 +7,139 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/static/ops.css">
 <style>
+  :root { --blue: #2F5F8F; --blue-deep: #234A70; --blue-wash: #EAF1F8; --blue-line: #C9DAEA; --alert: var(--out, #B3261E); }
+  [hidden] { display: none !important; }   /* .button-row's display: flex would otherwise show hidden rows */
   .intro { max-width: 72ch; }
   .status-line { border: 1px solid var(--rule); border-radius: 4px; padding: 12px 16px; max-width: 860px; }
   .status-line.off { border-color: var(--brass-dim); }
   .badge { font: 600 11.5px var(--sans); border-radius: 3px; padding: 2px 7px; white-space: nowrap; }
-  .badge.human { background: rgba(179,38,30,.1); color: var(--out); }
+  .badge.human { background: rgba(179,38,30,.1); color: var(--alert); }
   .badge.sample { background: rgba(140,100,24,.12); color: var(--brass); }
-  .convo { margin-top: 18px; border: 1px solid var(--rule); border-radius: 6px; padding: 16px 18px; max-width: 860px; }
-  .convo h3 { font: 600 16px var(--serif); margin: 0 0 4px; }
-  .msg { margin-top: 14px; }
-  .msg .who { font: 600 12px var(--sans); color: var(--dim); text-transform: none; }
-  .msg .body { white-space: pre-wrap; margin-top: 2px; }
-  .msg.customer .body { font-weight: 500; }
-  .review { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .review button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
-  .review textarea, .editor textarea, .editor input, .settings textarea, .settings input {
-    width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border-radius: 3px;
-    font: 14px/1.5 var(--sans); color: var(--ink); background: #fff; }
-  .review textarea { margin-top: 6px; min-height: 70px; }
-  .correction-note { font-size: 12.5px; color: var(--in); }
-  .msg.staff .who { color: var(--ink); }
-  .msg.staff .body { border-left: 3px solid var(--ink); padding-left: 10px; }
   .badge.handling { background: var(--row); color: var(--ink); }
-  .convo-state { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 8px 0 4px; }
-  .reply-box { margin-top: 18px; border-top: 1px solid var(--row); padding-top: 14px; }
-  .reply-box textarea { width: 100%; min-height: 80px; padding: 9px 11px; border: 1px solid var(--rule);
-    border-radius: 3px; font: 14px/1.5 var(--sans); color: var(--ink); }
-  .article { border-bottom: 1px solid var(--row); padding: 12px 0; max-width: 860px; }
-  .article .t { font-weight: 600; display: flex; gap: 10px; align-items: center; }
-  .article .c { color: var(--dim); margin-top: 4px; white-space: pre-wrap; }
-  .article .actions { margin-top: 6px; display: flex; gap: 12px; }
-  .editor, .settings { max-width: 860px; display: grid; gap: 10px; margin-top: 14px; }
+
+  /* Console: conversations | chat | customer */
+  .inbox { display: grid; grid-template-columns: minmax(260px, 310px) minmax(0, 1fr) minmax(240px, 290px);
+           margin-top: 12px; border: 1px solid var(--blue-line); border-radius: 8px; overflow: hidden;
+           height: min(80vh, 860px); background: #fff; }
+  .threads { border-right: 1px solid var(--blue-line); display: flex; flex-direction: column; min-height: 0; background: var(--blue-wash); }
+  .tabs { display: flex; gap: 2px; padding: 8px 8px 0; background: var(--blue); }
+  .tab { flex: 1; border: 0; border-radius: 6px 6px 0 0; padding: 8px 4px; background: transparent; color: #DCE8F4;
+         font: 600 12.5px var(--sans); cursor: pointer; white-space: nowrap; }
+  .tab.on { background: var(--blue-wash); color: var(--blue-deep); }
+  .tab .count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px;
+                background: var(--alert); color: #fff; font: 700 11px/18px var(--sans); }
+  .tab:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+  #conversations { overflow-y: auto; flex: 1; }
+  .thread { display: grid; grid-template-columns: 36px 1fr; gap: 10px; width: 100%; text-align: left; border: 0;
+            border-bottom: 1px solid var(--blue-line); background: transparent; padding: 11px 12px; cursor: pointer;
+            font: 14px/1.4 var(--sans); color: var(--ink); }
+  .thread:hover { background: #DCE8F4; }
+  .thread:focus-visible { outline: 3px solid var(--blue); outline-offset: -3px; }
+  .thread.active { background: #fff; box-shadow: inset 4px 0 0 var(--blue); }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+            font: 700 14px var(--sans); background: var(--blue); }
+  .avatar.big { width: 52px; height: 52px; font-size: 19px; }
+  .thread .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .thread .name { font-size: 13px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread .time { font-size: 12px; color: var(--dim); white-space: nowrap; }
+  .thread .q { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 5px; }
+  .thread .flag { color: var(--alert); font-weight: 600; }
+  .thread.unanswered .q { font-weight: 600; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .tag { font: 500 11px var(--sans); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--blue-line); color: var(--blue); background: #fff; }
+  .tag.person { border-color: rgba(179,38,30,.35); color: var(--alert); }
+  .unread { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--alert); color: #fff;
+            font: 700 11px/18px var(--sans); text-align: center; margin-left: auto; }
+  #conversations .empty { padding: 16px 14px; }
+
+  .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .pane-empty { margin: auto; color: var(--dim); padding: 24px; text-align: center; max-width: 40ch; }
+  .pane-head { padding: 10px 16px; border-bottom: 1px solid var(--row); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pane-head h3 { font: 600 15px var(--serif); margin: 0; margin-right: auto; }
+  .chat { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; background: #FBFCFE; }
+  .bubble { max-width: 78%; }
+  .bubble .who { font: 600 11.5px var(--sans); color: var(--dim); margin-bottom: 3px; }
+  .bubble .body { white-space: pre-wrap; padding: 9px 12px; border-radius: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+  .bubble.customer { align-self: flex-start; }
+  .bubble.customer .body { background: var(--row); border-bottom-left-radius: 4px; }
+  .bubble.assistant, .bubble.staff { align-self: flex-end; }
+  .bubble.assistant .who, .bubble.staff .who { text-align: right; }
+  .bubble.assistant .body { background: #fff; border: 1px solid var(--blue-line); border-bottom-right-radius: 4px; }
+  .bubble.staff .body { background: var(--blue); color: #fff; border-bottom-right-radius: 4px; }
+  .bubble.staff .body a { color: #fff; }
+  .review { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+  .review button { font-size: 12px; padding: 3px 9px; }
+  .review button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .bubble textarea { margin-top: 6px; min-height: 64px; }
+  .bubble .button-row { justify-content: flex-end; }
+  .correction-note { font-size: 12px; color: var(--in); }
+
+  .reply-box { border-top: 1px solid var(--row); padding: 10px 16px 12px; background: #fff; position: relative; }
+  .reply-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12.5px; color: var(--dim); }
+  .reply-tools button { font-size: 12.5px; padding: 3px 9px; }
+  .reply-tools .keys { margin-left: auto; }
+  .reply-box textarea, .bubble textarea, .editor textarea, .editor input, .settings textarea, .settings input {
+    width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--rule); border-radius: 3px;
+    font: 14px/1.5 var(--sans); color: var(--ink); background: #fff; }
+  .reply-box textarea { min-height: 72px; }
+  .reply-box .button-row { margin-top: 8px; justify-content: flex-end; }
+  .sources { margin-top: 6px; font-size: 12.5px; color: var(--dim); }
+  .sources a { color: var(--blue-deep); }
+  .quick { position: absolute; left: 16px; right: 16px; bottom: calc(100% - 4px); max-height: 240px; overflow-y: auto;
+           background: #fff; border: 1px solid var(--blue-line); border-radius: 6px; box-shadow: 0 6px 20px rgba(35,74,112,.15); z-index: 5; }
+  .quick button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--row); background: #fff;
+                  padding: 8px 12px; font: 13.5px/1.4 var(--sans); cursor: pointer; }
+  .quick button:hover, .quick button:focus-visible { background: var(--blue-wash); outline: none; }
+  .quick .qt { font-weight: 600; display: block; }
+  .quick .qc { color: var(--dim); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .profile { border-left: 1px solid var(--blue-line); overflow-y: auto; padding: 16px; font-size: 13.5px; }
+  .profile .who-card { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+  .profile .who-card .nm { font-weight: 600; overflow-wrap: anywhere; }
+  .profile h4 { font: 600 12px var(--sans); color: var(--dim); margin: 16px 0 6px; text-transform: none; }
+  .profile dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 0; }
+  .profile dt { color: var(--dim); }
+  .profile dd { margin: 0; overflow-wrap: anywhere; }
+  .profile .summary { background: var(--blue-wash); border-radius: 6px; padding: 8px 10px; }
+  .profile .products a { display: block; padding: 6px 0; border-bottom: 1px solid var(--row); color: var(--blue-deep); }
+  .profile .muted-note { color: var(--dim); }
+
+  @media (max-width: 1100px) {
+    .inbox { grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); }
+    .profile { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--blue-line); max-height: 260px; }
+  }
+  @media (max-width: 760px) {
+    .inbox { grid-template-columns: 1fr; height: auto; }
+    .threads { max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--blue-line); }
+    .pane { min-height: 70vh; }
+    .bubble { max-width: 92%; }
+  }
+  .teach { margin-top: 28px; max-width: 900px; }
+  .teach-tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--blue); }
+  .teach-tab { border: 1px solid var(--blue-line); border-bottom: 0; border-radius: 6px 6px 0 0; padding: 9px 16px;
+               background: var(--blue-wash); color: var(--blue-deep); font: 600 14px var(--sans); cursor: pointer; }
+  .teach-tab.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .teach-tab.on .muted { color: #DCE8F4; }
+  .teach-tab:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .teach-panel { padding: 14px 0 0; }
+  .article { border: 1px solid var(--blue-line); border-radius: 6px; margin-bottom: 8px; background: #fff; }
+  .article > summary { list-style: none; cursor: pointer; padding: 11px 14px; display: flex; gap: 10px; align-items: center; font-weight: 600; }
+  .article > summary::-webkit-details-marker { display: none; }
+  .article > summary::before { content: "\25B8"; color: var(--blue); transition: transform .15s; }
+  .article[open] > summary::before { transform: rotate(90deg); }
+  .article > summary .len { margin-left: auto; font: 400 12px var(--sans); color: var(--dim); }
+  .article > summary:focus-visible { outline: 3px solid var(--blue); outline-offset: -3px; border-radius: 6px; }
+  .article .c { color: var(--ink); padding: 0 14px 4px 34px; white-space: pre-wrap; }
+  .article .actions { padding: 6px 14px 12px 34px; display: flex; gap: 12px; }
+  .editor-box { margin-top: 12px; border: 1px dashed var(--blue-line); border-radius: 6px; padding: 0 14px; }
+  .editor-box > summary { cursor: pointer; padding: 11px 0; font: 600 14px var(--sans); color: var(--blue-deep); }
+  .editor-box .editor { margin-top: 0; padding-bottom: 14px; }
+  @media (prefers-reduced-motion: reduce) { .article > summary::before { transition: none; } }
+  .editor, .settings { max-width: 860px; display: grid; gap: 10px; margin-top: 4px; }
   .editor textarea { min-height: 110px; }
   .settings textarea { min-height: 70px; }
   .settings label, .editor label { font-size: 13px; color: var(--dim); }
+
 </style>
 </head>
 <body>
@@ -61,47 +160,70 @@
 
   <section>
     <h2>Conversations</h2>
-    <table class="data">
-      <thead><tr><th>Last message</th><th>First question</th><th class="num">Messages</th><th>Needs</th></tr></thead>
-      <tbody id="conversations"></tbody>
-    </table>
-    <div id="conversation"></div>
-  </section>
-
-  <section>
-    <h2>Knowledge articles</h2>
-    <p class="hint">What the assistant may tell customers about policies. It won't answer policy questions
-      that aren't covered here; it offers a person instead.</p>
-    <div id="articles"></div>
-    <div class="editor">
-      <h3 style="font: 600 16px var(--serif); margin: 10px 0 0" id="editor-title">Add an article</h3>
-      <label for="a-title">Title</label>
-      <input id="a-title" maxlength="120" placeholder="For example: Warranty">
-      <label for="a-content">What customers should know</label>
-      <textarea id="a-content" maxlength="4000" placeholder="Write it the way you'd explain it to a customer."></textarea>
-      <div class="button-row">
-        <button class="primary" id="a-save" type="button">Save article</button>
-        <button class="quiet" id="a-cancel" type="button" hidden>Cancel editing</button>
+    <div class="inbox">
+      <nav class="threads" aria-label="Conversations">
+        <div class="tabs" role="tablist" id="tabs">
+          <button class="tab on" type="button" role="tab" data-tab="waiting">Waiting<span class="count" id="count-waiting" hidden></span></button>
+          <button class="tab" type="button" role="tab" data-tab="person">With a person</button>
+          <button class="tab" type="button" role="tab" data-tab="ai">AI</button>
+          <button class="tab" type="button" role="tab" data-tab="all">All</button>
+        </div>
+        <div id="conversations"></div>
+      </nav>
+      <div class="pane" id="conversation">
+        <p class="pane-empty">Choose a conversation on the left to read it and reply.</p>
       </div>
+      <aside class="profile" id="profile" aria-label="Customer">
+        <p class="muted-note">Customer details appear here when you open a conversation.</p>
+      </aside>
     </div>
   </section>
 
-  <section>
-    <h2>Name, greeting and tone</h2>
-    <div class="settings">
-      <label for="s-store">Store name (how the assistant refers to the shop)</label>
-      <input id="s-store" maxlength="80">
-      <label for="s-name">Assistant name</label>
-      <input id="s-name" maxlength="80">
-      <label for="s-staff">Name shown on replies you write yourself</label>
-      <input id="s-staff" maxlength="80" placeholder="For example: Serena">
-      <label for="s-greeting">Greeting shown when a customer opens the chat</label>
-      <textarea id="s-greeting" maxlength="600"></textarea>
-      <label for="s-tone">Tone (how it should sound)</label>
-      <textarea id="s-tone" maxlength="1500"></textarea>
-      <div class="button-row"><button class="primary" id="s-save" type="button">Save</button></div>
+  <section class="teach">
+    <div class="teach-tabs" role="tablist" aria-label="Teach the assistant">
+      <button class="teach-tab on" type="button" role="tab" aria-selected="true" aria-controls="panel-articles" id="tab-articles">Knowledge articles <span class="muted" id="article-count"></span></button>
+      <button class="teach-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" id="tab-settings">Name, greeting and tone</button>
     </div>
-    <p class="hint">It always says it's an AI assistant and offers a person, whatever the name and tone.</p>
+
+    <div class="teach-panel" id="panel-articles" role="tabpanel" aria-labelledby="tab-articles">
+      <p class="hint">What the assistant may tell customers about policies. It won't answer policy questions
+        that aren't covered here; it offers a person instead. Click a title to read or edit it.</p>
+      <div class="button-row" style="margin-bottom:8px">
+        <button class="quiet" type="button" id="expand-all">Expand all</button>
+        <button class="quiet" type="button" id="collapse-all">Collapse all</button>
+      </div>
+      <div id="articles"></div>
+      <details class="editor-box" id="editor-box">
+        <summary id="editor-title">Add an article</summary>
+        <div class="editor">
+          <label for="a-title">Title</label>
+          <input id="a-title" maxlength="120" placeholder="For example: Warranty">
+          <label for="a-content">What customers should know</label>
+          <textarea id="a-content" maxlength="4000" placeholder="Write it the way you'd explain it to a customer."></textarea>
+          <div class="button-row">
+            <button class="primary" id="a-save" type="button">Save article</button>
+            <button class="quiet" id="a-cancel" type="button" hidden>Cancel editing</button>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="teach-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <div class="settings">
+        <label for="s-store">Store name (how the assistant refers to the shop)</label>
+        <input id="s-store" maxlength="80">
+        <label for="s-name">Assistant name</label>
+        <input id="s-name" maxlength="80">
+        <label for="s-staff">Name shown on replies you write yourself</label>
+        <input id="s-staff" maxlength="80" placeholder="For example: Serena">
+        <label for="s-greeting">Greeting shown when a customer opens the chat</label>
+        <textarea id="s-greeting" maxlength="600"></textarea>
+        <label for="s-tone">Tone (how it should sound)</label>
+        <textarea id="s-tone" maxlength="1500"></textarea>
+        <div class="button-row"><button class="primary" id="s-save" type="button">Save</button></div>
+      </div>
+      <p class="hint">It always says it's an AI assistant and offers a person, whatever the name and tone.</p>
+    </div>
   </section>
 </main>
 
@@ -136,29 +258,114 @@ function renderStatus(d) {
 }
 
 let conversations = [];
+let knowledge = [];
 let openId = null;
 let openCount = 0;
+let tab = "waiting";
 
-function needsBadge(c) {
-  if (!c.needs_human) return "";
-  return c.last_by === "customer" ? `<span class="badge human">Waiting for you</span>`
-                                  : `<span class="badge handling">A person is handling</span>`;
+const waitingFor = c => (c.unread || 0) > 0 || (c.needs_human && c.last_by === "customer");
+const TABS = {
+  waiting: c => waitingFor(c),
+  person: c => c.needs_human,
+  ai: c => !c.needs_human,
+  all: () => true,
+};
+
+function displayName(c) {
+  return c.customer_email || `Customer ${c.id.replace(/^conv_/, "").slice(0, 6)}`;
+}
+function avatar(c, big) {
+  const name = displayName(c);
+  const hue = [...c.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 0);
+  return `<span class="avatar${big ? " big" : ""}" style="background: hsl(${hue} 38% 42%)" aria-hidden="true">${esc(name[0].toUpperCase())}</span>`;
+}
+
+function shortTime(stamp) {
+  const today = new Date().toISOString().slice(0, 10);
+  return stamp.slice(0, 10) === today ? stamp.slice(11, 16) : stamp.slice(5, 16).replace(" ", " · ");
 }
 
 function renderConversations(list) {
-  conversations = list;
-  $("conversations").innerHTML = list.length ? list.map(c => `
-    <tr class="link" tabindex="0" data-id="${esc(c.id)}">
-      <td class="muted">${esc(c.last_message_at.slice(0, 16))}</td>
-      <td>${esc((c.first_question || "").slice(0, 90))}</td>
-      <td class="num">${num(c.message_count)}</td>
-      <td>${needsBadge(c)}</td>
-    </tr>`).join("")
-    : `<tr><td colspan="4" class="empty">No conversations yet. Open the shop and try the chat in the corner.</td></tr>`;
-  document.querySelectorAll("#conversations tr.link").forEach(tr => {
-    tr.onclick = () => openConversation(tr.dataset.id);
-    tr.onkeydown = e => { if (e.key === "Enter") openConversation(tr.dataset.id); };
-  });
+  conversations = [...list].sort((a, b) =>
+    waitingFor(b) - waitingFor(a) || (b.needs_human ? 1 : 0) - (a.needs_human ? 1 : 0)
+    || (b.last_message_at > a.last_message_at ? 1 : -1));
+  const waiting = conversations.filter(waitingFor).length;
+  $("count-waiting").hidden = !waiting;
+  $("count-waiting").textContent = waiting;
+  const shown = conversations.filter(TABS[tab]);
+  const emptyText = {
+    waiting: "Nobody is waiting for a reply.",
+    person: "No conversations are with a person right now.",
+    ai: "No conversations with the AI yet.",
+    all: "No conversations yet. Open the shop and try the chat in the corner.",
+  }[tab];
+  $("conversations").innerHTML = shown.length ? shown.map(c => `
+    <button type="button" class="thread${c.id === openId ? " active" : ""}${c.unread ? " unanswered" : ""}" data-id="${esc(c.id)}"
+            ${c.id === openId ? 'aria-current="true"' : ""}>
+      ${avatar(c)}
+      <span>
+        <span class="top"><span class="name">${esc(displayName(c))}</span><span class="time">${esc(shortTime(c.last_message_at))}</span></span>
+        <span class="q">${waitingFor(c) ? `<span class="flag">[Waiting]</span> ` : ""}${esc((c.first_question || "(no message)").slice(0, 140))}</span>
+        <span class="tags">
+          ${c.needs_human ? `<span class="tag person">With a person</span>` : `<span class="tag">AI</span>`}
+          <span class="tag">${num(c.message_count)} messages</span>
+          ${c.unread ? `<span class="unread" aria-label="${c.unread} unanswered">${c.unread}</span>` : ""}
+        </span>
+      </span>
+    </button>`).join("")
+    : `<p class="empty">${emptyText}</p>`;
+  document.querySelectorAll("#conversations .thread").forEach(b => b.onclick = () => openConversation(b.dataset.id));
+}
+
+document.querySelectorAll("#tabs .tab").forEach(t => t.onclick = () => {
+  tab = t.dataset.tab;
+  document.querySelectorAll("#tabs .tab").forEach(x => x.classList.toggle("on", x === t));
+  renderConversations(conversations);
+});
+
+// Products the AI linked to in this conversation, e.g. [CARB FOR HONDA](/product?sku=EBAY-...)
+function mentionedProducts(c) {
+  const found = new Map();
+  for (const m of c.messages) {
+    for (const [, title, url] of (m.content || "").matchAll(/\[([^\]]+)\]\(([^)\s]*\/product\?sku=[^)\s]+)\)/g)) {
+      const sku = decodeURIComponent(url.split("sku=")[1]).replace(/[.,;:!?]+$/, "");
+      if (!found.has(sku)) found.set(sku, { title: title.replace(/^View\s+/i, ""), sku });
+    }
+  }
+  return [...found.values()];
+}
+
+function renderProfile(c) {
+  const summary = conversations.find(x => x.id === c.id) || { id: c.id, customer_email: c.customer_email };
+  const products = mentionedProducts(c);
+  const customerCount = c.messages.filter(m => m.role === "customer").length;
+  $("profile").innerHTML = `
+    <div class="who-card">${avatar(summary, true)}
+      <div><div class="nm">${esc(displayName(summary))}</div>
+        <div class="tags" style="margin-top:4px">${c.needs_human ? `<span class="tag person">With a person</span>` : `<span class="tag">AI answering</span>`}</div></div>
+    </div>
+    <h4>Contact</h4>
+    <dl>
+      <dt>Email</dt><dd>${c.customer_email ? `<a href="mailto:${esc(c.customer_email)}">${esc(c.customer_email)}</a>` : "Not given yet"}</dd>
+    </dl>
+    ${c.handoff_summary ? `<h4>What they need</h4><div class="summary">${esc(c.handoff_summary)}</div>` : ""}
+    <h4>Conversation</h4>
+    <dl>
+      <dt>Started</dt><dd>${esc(c.started_at.slice(0, 16))}</dd>
+      <dt>Messages</dt><dd>${num(c.messages.length)} (${num(customerCount)} from the customer)</dd>
+      <dt>ID</dt><dd><code>${esc(c.id)}</code></dd>
+    </dl>
+    <h4>Products in this conversation</h4>
+    ${products.length ? `<div class="products">${products.map(p =>
+        `<a href="/product?sku=${encodeURIComponent(p.sku)}" target="_blank" rel="noopener">${esc(p.title)}</a>`).join("")}</div>`
+      : `<p class="muted-note">None linked yet.</p>`}`;
+}
+
+// Markdown links in replies, e.g. [Carburetor](/product?sku=...), become clickable. Text is escaped first,
+// and only site paths and http(s) addresses are linked.
+function linkify(html) {
+  return html.replace(/\[([^\]]+)\]\(((?:\/|https?:\/\/)[^)\s]+?)[.,;:!?]*\)/g,
+    (_, text, url) => `<a href="${url}" target="_blank" rel="noopener">${text}</a>`);
 }
 
 function messageHtml(m) {
@@ -166,14 +373,14 @@ function messageHtml(m) {
   const cls = m.staff_name ? "staff" : m.role;
   const reviewable = m.role === "assistant" && !m.staff_name;
   return `
-    <div class="msg ${cls}" data-id="${m.id}">
+    <div class="bubble ${cls}" data-id="${m.id}">
       <div class="who">${who} · ${esc(m.created_at.slice(11, 16))}</div>
-      <div class="body">${esc(m.content)}</div>
+      <div class="body">${linkify(esc(m.content))}</div>
       ${reviewable ? `
         <div class="review">
+          ${m.correction ? `<span class="correction-note">Your corrected answer is used as an example.</span>` : ""}
           <button class="secondary${m.rating === 1 ? " on" : ""}" type="button" data-rate="1">Good answer</button>
           <button class="secondary${m.rating === -1 ? " on" : ""}" type="button" data-rate="-1">Needs work</button>
-          ${m.correction ? `<span class="correction-note">Your corrected answer is being used as an example.</span>` : ""}
         </div>
         <textarea placeholder="Write the answer you'd want instead. The assistant will follow it as an example."
           ${m.correction ? "" : "hidden"}>${esc(m.correction || "")}</textarea>
@@ -183,46 +390,102 @@ function messageHtml(m) {
 
 function renderConversation(c, keepReply) {
   const draft = keepReply && $("reply-text") ? $("reply-text").value : "";
+  const oldChat = document.querySelector("#conversation .chat");
+  const nearBottom = !oldChat || oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 80;
   openCount = c.messages.length;
   $("conversation").innerHTML = `
-    <div class="convo">
-      <h3>Conversation from ${esc(c.started_at.slice(0, 16))}</h3>
-      <div class="convo-state">
-        ${c.needs_human
-          ? `<span class="badge human">A person is handling this</span><span class="muted">The AI is paused.
-             ${esc(c.handoff_summary || "")}</span>
-             <button class="secondary" type="button" id="resolve-btn">Mark resolved, hand back to the AI</button>`
-          : `<span class="muted">The AI is answering. Reply below to take over.</span>`}
-        ${c.customer_email ? `<span class="muted">Email: <a href="mailto:${esc(c.customer_email)}">${esc(c.customer_email)}</a></span>` : ""}
+    <div class="pane-head">
+      <h3>${esc(displayName(conversations.find(x => x.id === c.id) || c))}</h3>
+      ${c.needs_human
+        ? `<span class="badge human">A person is handling this</span>
+           <button class="secondary" type="button" id="resolve-btn">Mark resolved, hand back to the AI</button>`
+        : `<span class="muted">The AI is answering. Reply below to take over.</span>`}
+    </div>
+    <div class="chat" id="convo-messages">${c.messages.map(messageHtml).join("")}</div>
+    <div class="reply-box">
+      <div class="quick" id="quick" role="listbox" aria-label="Quick replies" hidden></div>
+      <div class="reply-tools">
+        <button type="button" class="secondary" id="quick-btn" aria-haspopup="listbox">Quick replies</button>
+        <button type="button" class="secondary" id="suggest-btn">Suggest a reply</button>
+        <span class="keys">Type # for quick replies, Cmd+Enter to send</span>
       </div>
-      <div id="convo-messages">${c.messages.map(messageHtml).join("")}</div>
-      <div class="reply-box">
-        <label for="reply-text" class="hint" style="display:block; margin: 0 0 6px">Your reply appears in the customer's chat, with your name.</label>
-        <textarea id="reply-text" maxlength="4000" placeholder="Type your reply to the customer"></textarea>
-        <div class="button-row"><button class="primary" type="button" id="reply-btn">Send reply</button></div>
-      </div>
+      <label for="reply-text" class="hint" style="position:absolute; left:-9999px">Reply to the customer</label>
+      <textarea id="reply-text" maxlength="4000" placeholder="Your reply appears in the customer's chat, with your name."></textarea>
+      <div class="sources" id="sources" hidden></div>
+      <div class="button-row"><button class="primary" type="button" id="reply-btn">Send reply</button></div>
     </div>`;
   $("reply-text").value = draft;
+  const chat = document.querySelector("#conversation .chat");
+  if (nearBottom) chat.scrollTop = chat.scrollHeight;
   wireReviews(c.id);
+  renderProfile(c);
+  wireQuickReplies();
+  $("reply-text").onkeydown = e => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $("reply-btn").click(); }
+    if (e.key === "Escape") $("quick").hidden = true;
+  };
+  $("suggest-btn").onclick = async () => {
+    const btn = $("suggest-btn");
+    btn.disabled = true; note("Writing a suggested reply from the store articles...");
+    try {
+      const d = await call(`/support/conversations/${encodeURIComponent(c.id)}/suggest`, {});
+      $("reply-text").value = d.suggestion;
+      $("reply-text").focus();
+      const src = d.sources || [];
+      $("sources").hidden = !src.length;
+      $("sources").innerHTML = src.length ? `Listings the draft looked at (closest in meaning first): ` + src.map(s =>
+        s.link ? `<a href="${esc(s.link)}" target="_blank" rel="noopener">${esc(s.title)}</a>` : esc(s.title)).join(" · ") : "";
+      note("Suggested reply added. Check it and edit it before you send.");
+    } catch (e) {
+      note(e.message || "Couldn't write a suggestion.", "error");
+    } finally {
+      if ($("suggest-btn")) $("suggest-btn").disabled = false;
+    }
+  };
   $("reply-btn").onclick = async () => {
     const text = $("reply-text").value;
     try {
       const updated = await call(`/support/conversations/${encodeURIComponent(c.id)}/reply`, { text });
       $("reply-text").value = "";
       renderConversation(updated, false);
+      refresh();
       note("Sent. The customer sees it in their chat within a few seconds.", "ok");
     } catch (e) { note(e.message, "error"); }
   };
   if ($("resolve-btn")) $("resolve-btn").onclick = async () => {
     try {
       renderConversation(await call(`/support/conversations/${encodeURIComponent(c.id)}/resolve`, {}), true);
+      refresh();
       note("Resolved. The AI answers this customer again.", "ok");
     } catch (e) { note(e.message, "error"); }
   };
 }
 
+function wireQuickReplies() {
+  const box = $("quick"), text = $("reply-text");
+  const show = filter => {
+    const q = (filter || "").toLowerCase();
+    const list = knowledge.filter(a => !q || a.title.toLowerCase().includes(q) || a.content.toLowerCase().includes(q));
+    box.innerHTML = list.length ? list.map(a => `
+      <button type="button" role="option" data-id="${a.id}"><span class="qt">${esc(a.title)}</span><span class="qc">${esc(a.content)}</span></button>`).join("")
+      : `<p class="muted-note" style="padding:8px 12px; margin:0">No article matches. Add articles below to use them here.</p>`;
+    box.hidden = false;
+    box.querySelectorAll("button").forEach(b => b.onclick = () => {
+      const a = knowledge.find(x => String(x.id) === b.dataset.id);
+      text.value = text.value.replace(/(^|\s)#\S*$/, "$1").trimEnd();
+      text.value = (text.value ? text.value + "\n\n" : "") + a.content;
+      box.hidden = true; text.focus();
+    });
+  };
+  $("quick-btn").onclick = () => box.hidden ? show("") : (box.hidden = true);
+  text.addEventListener("input", () => {
+    const m = text.value.match(/(?:^|\s)#(\S*)$/);
+    if (m) show(m[1]); else box.hidden = true;
+  });
+}
+
 function wireReviews(id) {
-  $("conversation").querySelectorAll(".msg.assistant").forEach(el => {
+  $("conversation").querySelectorAll(".bubble.assistant").forEach(el => {
     const box = el.querySelector("textarea"), save = el.querySelector("[data-save]");
     if (!box || !save) return;
     el.querySelectorAll("[data-rate]").forEach(b => b.onclick = async () => {
@@ -245,18 +508,23 @@ async function openConversation(id, quiet) {
     const changed = id !== openId;
     openId = id;
     renderConversation(c, !changed);
-    if (changed && !quiet) $("conversation").scrollIntoView({ behavior: "smooth", block: "start" });
+    renderConversations(conversations);   // mark it active in the list
+    if (changed) {
+      const chat = document.querySelector("#conversation .chat");
+      chat.scrollTop = chat.scrollHeight;
+      if (!quiet && window.innerWidth <= 900) $("conversation").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   } catch (e) { note(e.message, "error"); }
 }
 
-// Every 5 seconds: new customer messages in the open conversation, and the list.
+// Every 5 seconds: the list, and new messages in the open conversation.
 async function refresh() {
   try {
     const d = await call("/support/admin");
     renderConversations(d.conversations);
     if (openId) {
       const c = await call(`/support/conversations/${encodeURIComponent(openId)}`);
-      const typing = document.activeElement && document.activeElement.closest(".review");
+      const typing = document.activeElement && document.activeElement.closest(".bubble");
       if (c.messages.length !== openCount && !typing) renderConversation(c, true);
     }
   } catch { /* the next refresh will try again */ }
@@ -268,13 +536,17 @@ async function review(messageId, rating, correction) {
 }
 
 function renderArticles(list) {
+  knowledge = list;
+  const opened = new Set([...document.querySelectorAll("#articles details[open]")].map(d => d.dataset.id));
+  $("article-count").textContent = `(${list.length})`;
   $("articles").innerHTML = list.length ? list.map(a => `
-    <div class="article" data-id="${a.id}">
-      <div class="t">${esc(a.title)} ${a.is_sample ? `<span class="badge sample">Example: edit to match your store</span>` : ""}</div>
+    <details class="article" data-id="${a.id}"${opened.has(String(a.id)) ? " open" : ""}>
+      <summary>${esc(a.title)} ${a.is_sample ? `<span class="badge sample">Example: edit to match your store</span>` : ""}
+        <span class="len">${num(a.content.length)} characters</span></summary>
       <div class="c">${esc(a.content)}</div>
       <div class="actions"><button class="quiet" type="button" data-edit>Edit</button>
         <button class="quiet" type="button" data-delete>Delete</button></div>
-    </div>`).join("") : `<p class="empty">No articles yet.</p>`;
+    </details>`).join("") : `<p class="empty">No articles yet. Add the first one below.</p>`;
   $("articles").querySelectorAll(".article").forEach(el => {
     const a = list.find(x => String(x.id) === el.dataset.id);
     el.querySelector("[data-edit]").onclick = () => {
@@ -283,6 +555,8 @@ function renderArticles(list) {
       $("a-content").value = a.content;
       $("editor-title").textContent = `Editing: ${a.title}`;
       $("a-cancel").hidden = false;
+      $("editor-box").open = true;
+      $("editor-box").scrollIntoView({ behavior: "smooth", block: "nearest" });
       $("a-title").focus();
     };
     el.querySelector("[data-delete]").onclick = async () => {
@@ -293,12 +567,27 @@ function renderArticles(list) {
   });
 }
 
+$("expand-all").onclick = () => document.querySelectorAll("#articles details").forEach(d => d.open = true);
+$("collapse-all").onclick = () => document.querySelectorAll("#articles details").forEach(d => d.open = false);
+
+function showTeachTab(which) {
+  for (const [name, tabEl, panel] of [["articles", $("tab-articles"), $("panel-articles")], ["settings", $("tab-settings"), $("panel-settings")]]) {
+    const on = name === which;
+    tabEl.classList.toggle("on", on);
+    tabEl.setAttribute("aria-selected", on);
+    panel.hidden = !on;
+  }
+}
+$("tab-articles").onclick = () => showTeachTab("articles");
+$("tab-settings").onclick = () => showTeachTab("settings");
+
 function resetEditor() {
   editingId = null;
   $("a-title").value = "";
   $("a-content").value = "";
   $("editor-title").textContent = "Add an article";
   $("a-cancel").hidden = true;
+  $("editor-box").open = false;
 }
 
 $("a-save").onclick = async () => {
@@ -324,6 +613,7 @@ $("s-save").onclick = async () => {
     const d = await call("/support/admin");
     renderStatus(d);
     renderConversations(d.conversations);
+    knowledge = d.knowledge;
     renderArticles(d.knowledge);
     $("s-store").value = d.settings.store_name;
     $("s-name").value = d.settings.assistant_name;

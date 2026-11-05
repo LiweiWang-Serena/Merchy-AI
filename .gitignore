@@ -9,3 +9,10 @@ __pycache__/
 frontend-react/node_modules/
 frontend-react/dist/
 backend/data/
+
+# Local leftovers: patch-script backups, checks, course PDFs
+*.before-*
+*.bak
+*.old
+backend/inventory-backup-*.db
+/*.pdf

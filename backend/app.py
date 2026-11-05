@@ -188,7 +188,7 @@ def api_support_chat():
     body = request.get_json(silent=True) or {}
     try:
         support_agent.check_rate(request.remote_addr or "unknown")
-        return jsonify(support_agent.chat(body.get("conversation_id"), body.get("message")))
+        return jsonify(support_agent.chat(body.get("conversation_id"), body.get("message"), body.get("context_sku")))
     except support_agent.TooMany as e:
         return jsonify({"error": str(e)}), 429
     except ValueError as e:
@@ -208,6 +208,12 @@ def api_support_messages(conversation_id):
 def api_support_staff_reply(conversation_id):
     text = (request.get_json(silent=True) or {}).get("text")
     return _support_errors(lambda: support_agent.staff_reply(conversation_id, text))
+
+
+@app.route("/api/support/conversations/<conversation_id>/suggest", methods=["POST"])
+def api_support_suggest(conversation_id):
+    """Admin: a reply draft for the person handling the conversation (not sent)."""
+    return _support_errors(lambda: support_agent.suggest_reply_with_sources(conversation_id))
 
 
 @app.route("/api/support/conversations/<conversation_id>/resolve", methods=["POST"])
