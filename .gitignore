@@ -16,3 +16,4 @@ backend/data/
 *.old
 backend/inventory-backup-*.db
 /*.pdf
+.ipynb_checkpoints/

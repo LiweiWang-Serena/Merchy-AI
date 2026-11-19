@@ -13,6 +13,12 @@ service that reconciles them → a reporting layer that turns the merged
 data into low-stock alerts, reorder recommendations, and a sales
 velocity view → a small ops dashboard to look at all of it.
 
+It also has an AI support assistant for buyer questions, with an LLMOps
+layer around it: a versioned test set, an LLM judge, experiment tracking,
+retrieval (RAG), and a ReAct agent fine-tuned from an open model, all
+built on real eBay feedback and listings (see "AI support assistant:
+evaluation, RAG and a fine-tuned agent").
+
 It runs as one website from one server:
 
 | Address | Who | What it's for |
@@ -24,6 +30,7 @@ It runs as one website from one server:
 | `/admin/add` | You | Add a product from a link: your store, eBay, Amazon or another Shopify store |
 | `/admin/listings` | You | What Amazon and eBay show for each item, and where they disagree |
 | `/admin/ebay` | You | Connect the store's eBay seller account; sync its listings and import its orders |
+| `/admin/support` | You | The AI assistant's inbox: conversations handed to a person, suggested replies, policy articles and tone |
 | `/admin/reports` | You | Product analysis, profit, sales, purchasing and inventory analysis; printable |
 | `/admin/research` | You | Market research on product niches |
 
@@ -336,6 +343,30 @@ content to improve its products, so turn on billing before real
 customers chat. Without a key, the chat answers only with the
 best-matching article.
 
+**Order problems go to a person.** A prompt rule plus a rule-based
+safety net (`escalation.py`, with its own tests) hand the conversation to
+staff when a buyer reports a problem with an order (wrong, damaged,
+missing or late item, a refund), even when the model only explains the
+policy. An email address is saved only if the customer actually wrote it.
+
+**The Support page is an inbox.** Conversations waiting for a reply come
+first, with a red count of unanswered messages. Opening one shows the
+chat, a customer panel (email, what they need, products mentioned) and
+the reply box. **Suggest a reply** drafts an answer from the policy
+articles, the listings closest in meaning to what the customer wrote and
+the team's earlier answers to similar questions, and lists the listings
+it used; the person edits the draft and sends it. Typing `#` inserts a
+policy article as a quick reply. The chat window has a **New chat** button.
+
+**Retrieval.** `retrieval.py` gives the chatbot hybrid product search
+(keyword matches plus `gemini-embedding-001` meaning matches, merged by
+reciprocal rank fusion), ranks listings that name the vehicle year asked
+above ones that name other years, leaves out matches below a similarity
+threshold (`RAG_SEARCH_MIN_SCORE`, `RAG_MIN_SCORE`), and tells the
+assistant which listing the buyer is viewing when they chat from a
+product page. Suggested replies also show buyer-complaint counts for the
+listings they use.
+
 ### The shop home page in React + TypeScript
 
 `frontend-react/` has the shop home page rewritten in React + TypeScript
@@ -521,6 +552,69 @@ python sync.py        # pulls from both mock APIs, prints discrepancy count
 python reporting.py   # prints the full report as JSON
 ```
 
+## AI support assistant: evaluation, RAG and a fine-tuned agent
+
+This section covers how the support assistant (see AI customer support under Running it) is measured and improved: a versioned test set, an LLM judge, experiment tracking, retrieval, and a ReAct agent fine-tuned from an open model (LLW).
+
+### Data: buyer feedback and live listings
+
+The work started from real data rather than guesses about what buyers ask.
+
+- **Buyer feedback** (`backend/fetch_feedback.py`, `backend/clean_feedback.py`): the eBay Feedback API returned 17,900 feedback entries from two motorcycle and small-engine parts stores. About 86% were eBay's automatic text, so cleaning kept 2,784 comments written by buyers.
+- **Issue labels:** Gemini labeled each comment with one of eight issue types (fitment, shipping, quality, not as described, packaging, service, other, positive). A human check of 150 labels agreed 85.3% of the time, and the labels agreed with eBay's own ratings 72% of the time. A TF-IDF and logistic regression baseline reached 52%, which set the bar for the LLM. Reading the errors showed the first labeling prompt marked praise such as "fast shipping" as a shipping problem; the prompt was fixed.
+- **Live listings** (`backend/fetch_listings.py`, `backend/import_listings_for_eval.py`): the eBay Browse API returned 1,000 of the store's active listings in eBay Motors parts; after removing duplicate titles and repeated descriptions, 906 remain. They are imported into the app's product table and indexed for retrieval.
+- **Where the data goes next:** real complaints become the after-sale questions in the test set, fitment complaints motivated the "match the OEM part number" rule, and complaint counts appear next to the listings a suggested reply uses.
+
+### Evaluation
+
+- **Test set:** `backend/data/qa/qa_test_set_v1.csv`, 70 questions: 42 after-sale messages rewritten from real buyer complaints, 20 pre-sale questions from real listings, 8 policy questions. Each has answer key points and whether it should go to a person.
+- **Judge:** a Gemini model grades every reply for key points covered, correct handoff, and unsupported claims (spot-checked against human judgement: 8 of 10 agree).
+- **Metrics:** reply accuracy (all key points, correct handoff, nothing unsupported), automation rate, key-point coverage, escalation accuracy, unsupported-claim rate, median latency.
+- **Tracking:** every run is logged to MLflow (`backend/data/mlflow.db`). Browse with `mlflow ui --backend-store-uri sqlite:///data/mlflow.db` from `backend/`.
+- **Notebook:** `backend/eval/chatbot_qa_eval.ipynb`. Every Gemini call is cached under `backend/data/qa/`, so re-running never repeats finished work.
+
+### Results (same 70 questions, same judge)
+
+| Version | Approach | Reply accuracy | Escalation | Key points | Unsupported |
+|---|---|---|---|---|---|
+| Gemini, policies in the prompt | no retrieval | 34.3% | 54.3% | 80.3% | 0.0% |
+| Gemini, policies and listings retrieved together (top 4) | classic RAG | 32.9% | 67.1% | 69.0% | 1.4% |
+| Gemini, all policies + top 3 listings, prompt v2 | classic RAG | 66.7% | 90.0% | 82.0% | 1.6% |
+| Gemini 3.1 Flash Lite as a ReAct agent | agentic RAG | pending | pending | pending | pending |
+| Qwen2.5-7B-Instruct (4-bit) as a ReAct agent | agentic RAG | 22.9% | 57.1% | 43.0% | 17.1% |
+| **LLW**: Qwen2.5-7B + LoRA on Gemini traces, ReAct | agentic RAG | 34.3% | 91.4% | 54.2% | 11.4% |
+
+Before the fixes, the live chatbot handed **0 of 42** after-sale problems to staff. Prompt v2's gains came mostly from two rules (remind buyers to match the OEM part number; hand refunds, damaged, wrong or missing items to staff). Fine-tuning raised the open model's escalation accuracy from 57% to 91% and cut unsupported claims from 17% to 11%; pre-sale and policy answers got slightly worse, likely because half the training traces were after-sale handoffs.
+
+**Caveats:** 70 questions is a small set, and prompt v2 and the thresholds were tuned after reading it, so those results are optimistic until a fresh set of real, colloquial questions confirms them. Eight of the nine store policies are still assumed until confirmed with the store.
+
+### ReAct agent and the fine-tuned model (LLW)
+
+The agent (`backend/eval/merchy_react.py`) thinks step by step and calls four tools: `SearchListings` (BM25 over the listings with a vehicle make/year boost), `GetProduct`, `GetPolicy`, and `HandToStaff`. Each step is one assistant message; each tool result goes back as an observation, which is also the fine-tuning format.
+
+| Stage | Where | Command or notebook | Output |
+|---|---|---|---|
+| 1. Buyer messages for training | Mac | `python eval/build_escalation_data.py` | `data/finetune/escalation_train.csv` (1,080 messages; test questions excluded) |
+| 2. Teacher traces | Mac | `python eval/build_react_traces.py` | `data/finetune/react_traces.jsonl` (Gemini runs the same agent; only traces with correct format and handoff are kept: 94 of 100) |
+| 3. Base model run | Colab T4 | `merchy_react_qwen7b_stage1.ipynb` | `replies_react-qwen7b-base.csv` |
+| 4. Fine-tune and run LLW | Colab T4 | `finetune_llw_react_stage3.ipynb` | `replies_react-llw.csv`, LoRA adapter in `data/finetune/llw-lora-adapter/` |
+| 5. Gemini as the agent | Mac | `python eval/run_react_gemini.py` | `replies_react-gemini.csv` |
+| 6. Grade | Mac | `run_eval('<run name>', lambda q: '', {...})` in the eval notebook | metrics in MLflow |
+
+Fine-tuning: Unsloth, `unsloth/Qwen2.5-7B-Instruct-bnb-4bit`, LoRA r=16 on all attention and MLP projections, loss on the agent's own steps only (system prompt and observations are context). LLW is a fine-tuned Qwen2.5-7B, not a model trained from scratch, and follows Qwen's license.
+
+### Data and privacy
+
+Everything under `backend/data/` stays out of git: buyer feedback, listings, generated training data, model outputs, the LoRA adapter, and the MLflow database. Clear notebook outputs before committing (`jupyter nbconvert --clear-output --inplace eval/chatbot_qa_eval.ipynb`).
+
+### Next steps
+
+- Grade a fresh set of colloquial questions to check the gains hold.
+- Rebalance the training traces (more pre-sale and policy) and retrain without packing.
+- Multi-turn agent that collects order details and photos before handing off, evaluated with a simulated customer.
+- A CI gate that fails a pull request when escalation accuracy, reply accuracy or Recall@k drops.
+- Export LLW to GGUF and serve it with Ollama; deploy the app on AWS with listing vectors in pgvector.
+
 ## One important design fix worth calling out
 
 Early on, the storefront's own sales and the Amazon/eBay sync were two
@@ -544,3 +638,6 @@ SKU across whatever channels exist.
 - Turning raw operational data into an actual decision (reorder qty, not just a dashboard number)
 - A backend structured so the mock data sources are swappable for real API integrations later
 - A small full-stack slice: mock external APIs → sync logic → SQLite → REST API → dashboard UI
+- Starting from real data: 17,900 eBay feedback entries cleaned to 2,784 buyer comments, labeled by an LLM and checked against human labels and a classical baseline
+- Measuring an LLM feature like any other component: a versioned test set, an LLM judge checked against human grades, and every run tracked in MLflow
+- Acting on what the evaluation found: retrieval, prompt rules and a tested safety net, then fine-tuning an open model (Qwen2.5-7B with LoRA) on teacher traces
