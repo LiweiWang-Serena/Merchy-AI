@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: merchy }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: merchy } }
+  template:
+    metadata: { labels: { app: merchy } }
+    spec:
+      containers:
+      - name: merchy
+        image: merchy:dev
+        imagePullPolicy: Never
+        envFrom: [{ secretRef: { name: merchy-secrets } }]
+        ports: [{ containerPort: 5050 }]
+        readinessProbe:
+          httpGet: { path: /, port: 5050 }
+          initialDelaySeconds: 10
+        livenessProbe:
+          httpGet: { path: /, port: 5050 }
+          initialDelaySeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata: { name: merchy }
+spec:
+  selector: { app: merchy }
+  ports: [{ port: 5050, targetPort: 5050 }]

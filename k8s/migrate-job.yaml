@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata: { name: merchy-migrate }
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: merchy:dev
+        imagePullPolicy: Never
+        command: ["python", "-c", "import db; db.ensure_schema(); print('schema ready')"]
+        envFrom: [{ secretRef: { name: merchy-secrets } }]

@@ -131,6 +131,28 @@ def _load():
     return _index
 
 
+def _pg_rows(q, limit=50):
+    """Nearest listings from pgvector, or None when no Postgres is configured."""
+    url = os.environ.get("DATABASE_URL", "")
+    if not url.startswith("postgres"):
+        return None
+    try:
+        import psycopg
+        vec = "[" + ",".join(str(float(x)) for x in q) + "]"
+        with psycopg.connect(url) as conn, conn.cursor() as cur:
+            cur.execute("""SELECT title, sku, text, makes, years,
+                                  1 - (embedding <=> %s::vector) AS score
+                           FROM kb_embeddings
+                           ORDER BY embedding <=> %s::vector
+                           LIMIT %s""", (vec, vec, limit))
+            return [{"title": t, "sku": s or "", "text": x,
+                     "makes": set(mk or []), "years": set(yr or []),
+                     "score": float(sc)}
+                    for t, s, x, mk, yr, sc in cur.fetchall()]
+    except Exception:
+        return None
+
+
 def _fit(row, makes, years):
     """True if the listing names the asked year, False if it names other years only, None if unknown."""
     if years and row["years"]:
@@ -148,11 +170,16 @@ def search(query, k=3, threshold=None):
         q = _embed_query(query[:2000])
         if q is None:
             return []
-        index = _load()
-        if index["vecs"] is None:
-            return []
         import numpy as np
-        scores = index["vecs"] @ q
+        pg = _pg_rows(q)
+        if pg is not None:
+            index = {"rows": pg}
+            scores = np.array([r["score"] for r in pg])
+        else:
+            index = _load()
+            if index["vecs"] is None:
+                return []
+            scores = index["vecs"] @ q
         makes, years = parse_vehicle(query)
         adjusted = scores.copy()
         if makes or years:
