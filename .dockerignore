@@ -12,3 +12,10 @@ venv/
 .git/
 frontend-react/node_modules/
 frontend-react/dist/
+
+# large local data: feedback, listings, finetune artifacts, MLflow, notebooks
+backend/data/
+*.ipynb
+.ipynb_checkpoints/
+inventory-backup-*.db
+k8s/
